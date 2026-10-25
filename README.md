@@ -40,7 +40,7 @@ Hunter can send new deals, price drops and cheaper saved items to your Telegram.
 1. In Telegram, open `@BotFather`, send `/newbot`, and copy the bot token.
 2. Open your new bot and press **Start**.
 3. Get your chat ID from `@userinfobot`, or open `https://api.telegram.org/bot<token>/getUpdates` and copy `chat.id`.
-4. In Hunter's sidebar, open **Telegram alerts**, paste the token and chat ID, press **Send test message**, then switch alerts on.
+4. On the store, open Hunter, press **Telegram** in the top bar, paste the token and chat ID, press **Send test**, then switch alerts on.
 
 Each deal is sent once, and again only if its price drops further. Use the userscript for alerts: some shops block bookmarklets from calling Telegram, while the userscript sends through `GM_xmlhttpRequest`. The token is stored only in your browser.
 

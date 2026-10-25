@@ -114,7 +114,7 @@
 
   // ───────────────────────── State ─────────────────────────
   const S = { products: new Map(), scanning: false, done: 0, total: 0, errors: 0, ctl: { stop: false },
-    q: '', brand: '', cat: '', preset: '', pick: false, favOnly: false, newOnly: false, shown: 60, tab: 'best', panel: false, startedAt: 0 };
+    q: '', brand: '', cat: '', preset: '', pick: false, tgm: false, favOnly: false, newOnly: false, shown: 60, tab: 'best', panel: false, startedAt: 0 };
 
   // ───────────────────────── Scanner ─────────────────────────
   async function scan() {
@@ -413,6 +413,17 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
 .pb{padding:18px 20px;overflow:auto}.pb .chip{padding:7px 13px;font-size:13px}
 .pf{display:flex;gap:10px;padding:14px 20px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--bd)}.pf .btn{flex:1;width:auto}.pf .btn.ghost{flex:0 0 auto;height:46px}
 .btn[disabled]{opacity:.45;pointer-events:none}
+.tgb .dot{top:7px;right:7px}
+.tgt{display:flex;align-items:center;gap:12px}
+.tgi{width:42px;height:42px;border-radius:12px;background:#229ed9;color:#fff;display:grid;place-items:center;flex:none}
+.ph small.ok{color:var(--ok)}
+.tgs{list-style:none;padding:0;margin:0 0 16px;counter-reset:t;display:flex;flex-direction:column;gap:14px}
+.tgs li{counter-increment:t;position:relative;padding-left:40px;display:flex;flex-direction:column;gap:6px}
+.tgs li:before{content:counter(t);position:absolute;left:0;top:-1px;width:28px;height:28px;border-radius:9px;background:var(--pr);color:#fff;font-weight:800;font-size:13px;display:grid;place-items:center}
+.tgs b{font-weight:800}.tgs span{color:var(--mt);font-size:13px}
+.tgs code{font:12px ui-monospace,Menlo,monospace;background:var(--sf2);border-radius:5px;padding:0 5px}
+.tlink{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:99px;background:#229ed9;color:#fff;font-weight:700;font-size:12.5px;text-decoration:none}
+.tlink:hover{background:#1c8bc0}
 .scrim{position:absolute;inset:0;background:rgba(10,12,16,.45);z-index:4;animation:fade .2s}.scrim.side{display:none;z-index:3}@keyframes fade{from{opacity:0}}
 .body{position:relative}
 @media(max-width:900px){
@@ -471,23 +482,34 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
     if (S.scanning) return;
     sideOpen = false; S.pick = true; render();
   }
-  function tgUI() {
-    const t = store.tg;
-    return `<div id="tgsec"><h4>${ic('send', 15)}Telegram alerts</h4>
+  // Telegram setup, opened from the header.
+  function tgModal() {
+    const t = store.tg, ready = tgReady();
+    const status = ready ? (t.on ? 'Connected · alerts on' : 'Connected · alerts off') : 'Not set up yet · about 2 minutes';
+    return `<div class="scrim" data-act="tgclose" style="z-index:6"></div><div class="picker" role="dialog" aria-label="Telegram alerts">
+ <div class="ph"><div class="tgt"><span class="tgi">${ic('send', 20)}</span><div><b>Telegram alerts</b><small class="${ready && t.on ? 'ok' : ''}">${status}</small></div></div><button class="ib soft" data-act="tgclose" title="Close">${ic('x')}</button></div>
+ <div class="pb">
+  <ol class="tgs">
+   <li><b>Create a bot</b><span>Open BotFather, send <code>/newbot</code>, follow the prompts and copy the token.</span><a class="tlink" href="https://t.me/BotFather" target="_blank" rel="noopener">${ic('ext', 14)}Open @BotFather</a></li>
+   <li><b>Press Start in your new bot</b><span>So it is allowed to message you.</span></li>
+   <li><b>Get your chat ID</b><span>Userinfobot replies with a number: that is your chat ID.</span><a class="tlink" href="https://t.me/userinfobot" target="_blank" rel="noopener">${ic('ext', 14)}Open @userinfobot</a></li>
+   <li><b>Paste both here</b>
+    <input class="fld" type="password" data-in="tgToken" placeholder="Bot token" value="${esc(t.token)}" autocomplete="off">
+    <input class="fld" data-in="tgChat" placeholder="Chat ID" value="${esc(t.chat)}" autocomplete="off" inputmode="numeric"></li>
+  </ol>
   <div class="tgcard ${t.on ? 'on' : ''} stack">
    <label class="sw"><input type="checkbox" data-in="tgOn" ${t.on ? 'checked' : ''}> <b>Send deals to Telegram</b></label>
-   <input class="fld" type="password" data-in="tgToken" placeholder="Bot token" value="${esc(t.token)}" autocomplete="off">
-   <input class="fld" data-in="tgChat" placeholder="Chat ID" value="${esc(t.chat)}" autocomplete="off">
    <label class="row" style="margin-top:4px"><span>Alert from</span><b id="tgminv">${t.minDisc}% off</b></label><input type="range" min="20" max="90" step="5" value="${t.minDisc}" data-in="tgMin">
    <label class="sw"><input type="checkbox" data-in="tgDrops" ${t.drops ? 'checked' : ''}> Any price drop</label>
    <label class="sw"><input type="checkbox" data-in="tgWatch" ${t.watch ? 'checked' : ''}> Saved items that get cheaper</label>
-   <button class="btn ghost full" data-act="tgtest" style="margin-top:4px">${ic('send', 16)}Send test message</button>
-   <p class="note">Each deal is sent once, and again only if it gets cheaper.</p>
-  </div></div>`;
+  </div>
+  <p class="note" style="margin-top:12px">Alerts go out after each scan. Each deal is sent once, and again only if it gets cheaper. If the test fails on this store, install the userscript. Your token stays in this browser.</p>
+ </div>
+ <div class="pf"><button class="btn ghost" data-act="tgtest">${ic('send', 16)}Send test</button><button class="btn" data-act="tgclose">Done</button></div></div>`;
   }
   function sidebar() {
     return `<aside class="${sideOpen ? 'open' : ''}">
- <div class="mob" style="gap:8px;flex-wrap:wrap"><button class="chip" data-act="theme">${ic('moon', 14)}Theme</button><button class="chip" data-act="bell">${ic('bell', 14)}Alerts ${store.tg.on && tgReady() ? 'on' : 'off'}</button><button class="chip" data-act="side">${ic('x', 14)}Close menu</button></div>
+ <div class="mob" style="gap:8px;flex-wrap:wrap"><button class="chip" data-act="theme">${ic('moon', 14)}Theme</button><button class="chip" data-act="tgopen">${ic('send', 14)}Telegram ${store.tg.on && tgReady() ? 'on' : 'off'}</button><button class="chip" data-act="side">${ic('x', 14)}Close menu</button></div>
  ${typeof captureUI === 'function' && !OFFSITE ? captureUI() : scanUI()}
  <div><h4>${ic('sliders', 15)}Filters</h4>
   <label class="row"><span>Min discount</span><b>${store.minDisc}%</b></label><input type="range" min="0" max="90" step="5" value="${store.minDisc}" data-in="minDisc">
@@ -495,7 +517,6 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   <label class="sw" style="margin-top:16px"><input type="checkbox" data-in="stockOnly" ${store.stockOnly ? 'checked' : ''}> In stock only</label>
   <label class="sw" style="margin-top:10px"><input type="checkbox" data-in="favOnly" ${S.favOnly ? 'checked' : ''}> Saved only</label>
   <label class="sw" style="margin-top:10px"><input type="checkbox" data-in="newOnly" ${S.newOnly ? 'checked' : ''}> New or price dropped</label></div>
- ${tgUI()}
  <div><h4>${ic('download', 15)}Export</h4><div class="chips"><button class="chip" data-act="csv">${ic('download', 14)}CSV</button><button class="chip" data-act="copyall">${ic('copy', 14)}Copy top 20</button><button class="chip" data-act="unhide">${ic('eyeoff', 14)}Unhide (${store.hidden.length})</button></div>
   <p class="note" style="margin-top:14px"><kbd>/</kbd> search &nbsp;<kbd>S</kbd> scan &nbsp;<kbd>Esc</kbd> close</p></div>
 </aside>`;
@@ -519,7 +540,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
       [true, 'You are on ' + PLATFORM, ''],
       [loc, 'Delivery location set', loc === false ? 'Set your delivery address on ' + PLATFORM + ', then reopen Hunter.' : 'Make sure your delivery address is set on ' + PLATFORM + '.'],
       [typeof GM_xmlhttpRequest === 'function' ? true : null, 'Userscript installed', 'Optional. Recommended for reliable Telegram alerts.'],
-      [tgReady() ? true : null, 'Telegram connected', 'Optional. Add your bot under Telegram alerts in the sidebar.']
+      [tgReady() ? true : null, 'Telegram connected', 'Optional. Press Telegram in the top bar to connect your bot.']
     ];
     return `<div class="check"><h3>Before your first ${capture ? 'capture' : 'scan'}</h3>${rows.map(([ok, t, hint]) => `<div class="ck ${ok ? 'ok' : ok === false ? 'no' : 'q'}"><span>${ic(ok ? 'check' : ok === false ? 'x' : 'info', 15)}</span><div><b>${t}</b>${!ok && hint ? `<p>${hint}</p>` : ''}</div></div>`).join('')}<button class="btn" data-act="scan" style="margin-top:16px">${ic('scan')}${capture ? 'Auto-scroll page' : 'Scan deals'}</button></div>`;
   }
@@ -592,11 +613,11 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
  <div class="logo"><span class="mk">${ic('arrowdown', 20)}</span><div><b>PriceDrop Hunter</b><small>${esc(PLATFORM)}${OFFSITE ? '<span class="flag">Not on store</span>' : ''}</small></div></div>
  <label class="search">${ic('search', 17)}<input data-in="q" placeholder="Search products or brands" value="${esc(S.q)}"><kbd>/</kbd></label><span class="sp"></span>
  ${capture ? '' : S.scanning ? `<button class="sb stop" data-act="stop">${ic('stop', 16)}<span class="lb">Stop</span></button>` : `<button class="sb" data-act="scan">${ic('scan', 16)}<span class="lb">Scan</span></button>`}
- <button class="ib" data-act="bell" title="Telegram alerts ${store.tg.on ? 'on' : 'off'}">${ic('bell')}<span class="dot ${store.tg.on && tgReady() ? 'on' : ''}"></span></button>
+ <button class="hb tgb" data-act="tgopen" title="Telegram alerts">${ic('send', 16)}<span class="lb">Telegram</span><span class="dot ${store.tg.on && tgReady() ? 'on' : ''}"></span></button>
  <button class="ib" data-act="theme" title="${dark ? 'Light' : 'Dark'} mode">${ic(dark ? 'sun' : 'moon')}</button>
  <button class="hb" data-act="panel" title="Shopping list">${ic('bag')}<span class="lb">List</span>${count ? `<span class="n">${count}</span>` : ''}</button>
  <button class="ib" data-act="close" title="Close (Esc)">${ic('x')}</button>${S.scanning ? `<div class="prog" style="width:${pct}%"></div>` : ''}</header>
- <div class="body">${sideOpen ? '<div class="scrim side" data-act="side"></div>' : ''}${sidebar()}${mainView()}</div>${S.panel ? '<div class="scrim" data-act="closepanel"></div>' : ''}${drawer()}${S.pick ? pickerUI() : ''}<div class="toast" id="toast"></div>`;
+ <div class="body">${sideOpen ? '<div class="scrim side" data-act="side"></div>' : ''}${sidebar()}${mainView()}</div>${S.panel ? '<div class="scrim" data-act="closepanel"></div>' : ''}${drawer()}${S.pick ? pickerUI() : ''}${S.tgm ? tgModal() : ''}<div class="toast" id="toast"></div>`;
     const m = root.getElementById('main'); if (m) m.scrollTop = keepScroll;
     const a = root.querySelector('aside'); if (a) a.scrollTop = sideScroll;
     if (focused === 'q') { const i = root.querySelector('[data-in=q]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
@@ -677,7 +698,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   }
   const notifySoon = debounce(() => notify(), 4000);
   async function tgTest() {
-    if (!tgReady()) { sideOpen = true; render(); toast('Add your bot token and chat ID first'); return; }
+    if (!tgReady()) { S.tgm = true; render(); toast('Paste your bot token and chat ID first'); return; }
     try { await tgSend(`<b>PriceDrop Hunter</b> is connected for ${esc(PLATFORM)}.\nDeals from ${store.tg.minDisc}% off will arrive here.`); toast('Test message sent. Check Telegram.'); }
     catch (e) { toast('Telegram: ' + e.message); }
   }
@@ -725,10 +746,8 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
       case 'stop': S.ctl.stop = true; toast('Stopping…'); break;
       case 'autoscroll': if (typeof autoScroll === 'function') autoScroll(); break;
       case 'tgtest': tgTest(); break;
-      case 'bell':
-        if (!tgReady()) { sideOpen = true; render(); const t = root.getElementById('tgsec'); if (t) t.scrollIntoView(); toast('Set up Telegram alerts in the sidebar'); }
-        else { store.tg.on = !store.tg.on; save(); render(); toast(store.tg.on ? 'Telegram alerts on' : 'Telegram alerts off'); }
-        break;
+      case 'bell': case 'tgopen': sideOpen = false; S.pick = false; S.tgm = true; render(); break;
+      case 'tgclose': S.tgm = false; render(); break;
       case 'view': store.view = el.dataset.v; save(); render(); break;
       case 'more': S.shown += 60; render(); break;
       case 'fav':
@@ -757,7 +776,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   document.addEventListener('keydown', e => {
     if (host.style.display === 'none') return;
     const typing = root.activeElement && /INPUT|SELECT/.test(root.activeElement.tagName);
-    if (e.key === 'Escape' && S.pick) { S.pick = false; render(); }
+    if (e.key === 'Escape' && (S.pick || S.tgm)) { S.pick = false; S.tgm = false; render(); }
     else if (e.key === 'Escape') { if (S.panel) { S.panel = false; render(); } else if (typing) root.activeElement.blur(); else api.hide(); }
     else if (!typing && !e.metaKey && !e.ctrlKey) {
       if (e.key === '/') { e.preventDefault(); const i = root.querySelector('[data-in=q]'); i && i.focus(); }
