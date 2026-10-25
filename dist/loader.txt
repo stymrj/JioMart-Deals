@@ -1,0 +1,1 @@
+javascript:(function(){if(window.__JMQ__)return window.__JMQ__.toggle();fetch('https://stymrj.github.io/JioMart-Deals/dist/deals.js?'+Date.now()).then(function(r){if(!r.ok)throw Error('HTTP '+r.status);return r.text()}).then(function(t){(0,eval)(t)}).catch(function(e){alert('PriceDrop Hunter could not load: '+e.message+'. Try the full bookmarklet or the userscript.')})})()
