@@ -56,6 +56,7 @@
     const pr = x.price || {}, sell = price(pr.effective && pr.effective.min), mrp0 = price(pr.marked && pr.marked.min);
     if (!x.name || !sell) return null;
     const mrp = mrp0 < sell ? sell : mrp0, h = x.hierarchy || {};
+    if (mrp > sell * 20) return null; // 95%+ off is almost always an inflated list price
     const c = (h.l1_category && h.l1_category.name) || cat, sub = h.l2_category && h.l2_category.name;
     return { id: String(x.uid || x.item_code || x.slug), title: String(x.name), brand: String((x.brand && x.brand.name) || guessBrand(x.name)), price: sell, mrp,
       disc: mrp > sell ? Math.round((mrp - sell) / mrp * 100) : 0, save: mrp - sell,
@@ -130,7 +131,8 @@
           const items = await P.fetchPage(job, page, ctl);
           const fresh = ingest(items);
           scheduleRender();
-          if (!fresh || items.more === false) break;
+          // Stop on the last page, or when a page adds nothing and does not promise more.
+          if (items.more === false || (!fresh && items.more !== true)) break;
         }
       } catch (e) { if (!ctl.stop) S.errors++; }
       S.done++; scheduleRender();
