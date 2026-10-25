@@ -34,6 +34,8 @@ nav{display:flex;align-items:center;gap:28px;height:76px;position:relative;z-ind
 .ic{display:block;flex:none}
 .links a.tgnav{display:inline-flex;align-items:center;gap:7px;background:#229ed9;color:#fff;padding:8px 15px;border-radius:99px;font-weight:700;box-shadow:0 4px 14px rgba(34,158,217,.35)}.links a.tgnav:hover{background:#1c8bc0;color:#fff}
 @media(max-width:900px){.links a.tgnav{display:inline-flex;padding:8px 12px}}
+.links a.tgnav,.brand{white-space:nowrap}
+@media(max-width:600px){.tgfull{display:none}.links{gap:10px}}
 
 .hgrid{display:grid;grid-template-columns:1.02fr .98fr;gap:56px;align-items:center;padding:40px 0 140px;position:relative;z-index:2}
 .kicker{display:inline-block;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;margin-bottom:18px}
@@ -167,7 +169,7 @@ footer .h{color:var(--ac)}
 <header class="hero" id="top"><div class="wrap">
   <nav>
     <a class="brand" href="#top"><span class="mk"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.2 8 11l3.5-3.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 13.8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>PriceDrop Hunter</a>
-    <div class="links"><a href="https://stymrj.github.io/PriceDrop-Hunter/">All stores</a><a href="#install">Install</a><a href="#features">Features</a><a class="tgnav" href="#telegram"><svg class="ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>Set up Telegram</a><a href="#faq">FAQ</a><button class="nb" id="theme" type="button" title="Toggle theme"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></div>
+    <div class="links"><a href="https://stymrj.github.io/PriceDrop-Hunter/">All stores</a><a href="#install">Install</a><a href="#features">Features</a><a class="tgnav" href="#telegram"><svg class="ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg><span class="tgfull">Set up </span>Telegram</a><a href="#faq">FAQ</a><button class="nb" id="theme" type="button" title="Toggle theme"><svg class="ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></div>
   </nav>
   <div class="hgrid">
     <div>
