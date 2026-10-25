@@ -805,7 +805,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   const fabBtn = fabRoot.querySelector('.f');
   const placeFab = () => { fab.style.bottom = Math.max(8, Math.min(window.innerHeight - 64, +store.fabY || 24)) + 'px'; };
   let drag = null;
-  fabBtn.addEventListener('pointerdown', e => { drag = { y: e.clientY, b: parseFloat(fab.style.bottom) || 24, moved: false }; fabBtn.setPointerCapture(e.pointerId); });
+  fabBtn.addEventListener('pointerdown', e => { drag = { y: e.clientY, b: parseFloat(fab.style.bottom) || 24, moved: false }; try { fabBtn.setPointerCapture(e.pointerId); } catch (err) { /* not supported */ } });
   fabBtn.addEventListener('pointermove', e => {
     if (!drag) return;
     const dy = e.clientY - drag.y;
