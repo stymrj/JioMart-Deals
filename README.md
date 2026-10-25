@@ -1,12 +1,12 @@
 # PriceDrop Hunter for JioMart
 
-Scans JioMart's top-level categories, sorted by discount, and opens with the biggest deals. It runs in your own browser as a bookmarklet or userscript. Nothing is uploaded and there is no account.
+Scans the JioMart categories you pick, sorted by discount, and shows the biggest deals. It runs in your own browser as a bookmarklet or userscript. Nothing is uploaded and there is no account.
 
 **Live page:** https://stymrj.github.io/JioMart-Deals/
 
 ## Features
 
-- Opens with the biggest discounts, across every category, scanned by itself
+- Asks which categories to scan, then shows the biggest discounts first
 - Best deals of each category in one swipeable row, with See all
 - Ranks by percent off and rupees saved together
 - Labels products that are new, cheaper than last time, or at their lowest price ever
@@ -41,7 +41,6 @@ Hunter can send new deals, price drops and cheaper saved items to your Telegram.
 2. Open your new bot and press **Start**.
 3. Get your chat ID from `@userinfobot`, or open `https://api.telegram.org/bot<token>/getUpdates` and copy `chat.id`.
 4. In Hunter's sidebar, open **Telegram alerts**, paste the token and chat ID, press **Send test message**, then switch alerts on.
-5. Optional: set **Auto-scan** (for example every 15 minutes) and keep the tab open.
 
 Each deal is sent once, and again only if its price drops further. Use the userscript for alerts: some shops block bookmarklets from calling Telegram, while the userscript sends through `GM_xmlhttpRequest`. The token is stored only in your browser.
 

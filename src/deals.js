@@ -108,12 +108,13 @@
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* quota/private mode */ } };
   store.groups = (store.groups || []).filter(id => GROUPS.some(g => g.id === id));
   if (!store.groups.length) store.groups = defaults.groups.slice();
+  delete store.auto; // every scan is started by hand
   // v3: Hunter scans every category by itself and leads with the biggest discounts.
   if (store.v !== 3) { store.groups = GROUPS.map(g => g.id); store.sort = 'disc'; store.depth = (typeof P !== 'undefined' && P.defaults && P.defaults.depth) || 2; store.v = 3; save(); }
 
   // ───────────────────────── State ─────────────────────────
   const S = { products: new Map(), scanning: false, done: 0, total: 0, errors: 0, ctl: { stop: false },
-    q: '', brand: '', cat: '', preset: '', favOnly: false, newOnly: false, shown: 60, tab: 'best', panel: false, startedAt: 0 };
+    q: '', brand: '', cat: '', preset: '', pick: false, favOnly: false, newOnly: false, shown: 60, tab: 'best', panel: false, startedAt: 0 };
 
   // ───────────────────────── Scanner ─────────────────────────
   async function scan() {
@@ -405,6 +406,13 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
 .more{display:inline-flex;align-items:center;gap:5px;color:var(--pr);font-weight:800;font-size:13px;white-space:nowrap}
 .hs{display:grid;grid-auto-flow:column;grid-auto-columns:210px;gap:14px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}
 .mob{display:none}
+.picker{position:absolute;z-index:7;left:50%;top:50%;transform:translate(-50%,-50%);width:min(580px,calc(100% - 24px));max-height:calc(100% - 40px);display:flex;flex-direction:column;background:var(--sf);border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.3);overflow:hidden;animation:fade .15s}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;border-bottom:1px solid var(--bd)}
+.ph b{display:block;font-size:18px;font-weight:800;letter-spacing:-.3px}.ph small{color:var(--mt);font-size:12.5px;font-weight:600}
+.ib.soft{background:var(--sf2);color:var(--tx)}.ib.soft:hover{background:var(--bd)}
+.pb{padding:18px 20px;overflow:auto}.pb .chip{padding:7px 13px;font-size:13px}
+.pf{display:flex;gap:10px;padding:14px 20px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--bd)}.pf .btn{flex:1;width:auto}.pf .btn.ghost{flex:0 0 auto;height:46px}
+.btn[disabled]{opacity:.45;pointer-events:none}
 .scrim{position:absolute;inset:0;background:rgba(10,12,16,.45);z-index:4;animation:fade .2s}.scrim.side{display:none;z-index:3}@keyframes fade{from{opacity:0}}
 .body{position:relative}
 @media(max-width:900px){
@@ -431,6 +439,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
  .dc{font-size:11px;padding:2px 6px;left:8px;top:8px}.tg{left:8px;top:32px;font-size:9.5px}.fv{width:30px;height:30px;top:6px;right:6px}
  .list .im{width:88px;height:88px}
  .check{margin:20px 0;padding:18px}
+ .picker{top:auto;bottom:0;left:0;transform:none;width:100%;max-height:88%;border-radius:20px 20px 0 0}
  .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 }
 `;
@@ -440,13 +449,27 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   let sideOpen = false;
   const groupChip = g => `<button class="chip ${store.groups.includes(g.id) ? 'on' : ''}" data-act="grp" data-id="${g.id}">${esc(g.name)}</button>`;
   function scanUI() {
-    return `<div><h4>${ic('grid', 15)}Categories</h4><div class="chips">${GROUPS.map(groupChip).join('')}</div>
-  <div class="row" style="margin-top:10px;justify-content:flex-start"><button class="chip" data-act="all">Select all</button><button class="chip" data-act="none">Clear</button></div></div>
- <div><h4>${ic('scan', 15)}Scan</h4>
+    return `<div><h4>${ic('scan', 15)}Scan</h4>
   ${P.locUI(store, esc)}
-  <label class="row" style="margin-top:10px"><span>Pages per category</span><b>${store.depth}</b></label><input type="range" min="1" max="5" value="${store.depth}" data-in="depth">
-  <label class="row" style="margin-top:12px"><span>Auto-scan</span><select data-in="auto" style="height:34px">${[0, 10, 15, 30, 60].map(m => `<option value="${m}" ${(+store.auto || 0) === m ? 'selected' : ''}>${m ? 'Every ' + m + ' min' : 'Off'}</option>`).join('')}</select></label></div>
- ${S.scanning ? `<button class="btn stop" data-act="stop">${ic('stop')}Stop scan</button>` : `<button class="btn" data-act="scan">${ic('scan')}Scan deals</button>`}`;
+  <p class="note" style="margin-top:6px">Each scan asks which categories to check. Last time: ${store.groups.length} of ${GROUPS.length}.</p></div>
+ ${S.scanning ? `<button class="btn stop" data-act="stop">${ic('stop')}Stop scan</button>` : `<button class="btn" data-act="scan">${ic('scan')}Choose & scan</button>`}`;
+  }
+  // Asked before every scan: which categories, and how deep.
+  function pickerUI() {
+    const n = store.groups.length;
+    return `<div class="scrim" data-act="pclose" style="z-index:6"></div><div class="picker" role="dialog" aria-label="Choose what to scan">
+ <div class="ph"><div><b>What should Hunter scan?</b><small>${esc(PLATFORM)} · pick one or more categories</small></div><button class="ib soft" data-act="pclose" title="Close">${ic('x')}</button></div>
+ <div class="pb"><div class="chips">${GROUPS.map(groupChip).join('')}</div>
+  <div class="row" style="margin-top:12px;justify-content:flex-start;gap:6px"><button class="chip" data-act="all">Select all</button><button class="chip" data-act="none">Clear</button></div>
+  <label class="row" style="margin-top:20px"><span>Pages per category</span><b>${store.depth}</b></label><input type="range" min="1" max="5" value="${store.depth}" data-in="depth">
+  <p class="note" style="margin-top:4px">More pages find more deals but take longer.</p></div>
+ <div class="pf"><button class="btn ghost" data-act="pclose">Cancel</button><button class="btn" data-act="pstart" ${n ? '' : 'disabled'}>${ic('scan')}Scan ${n} ${n === 1 ? 'category' : 'categories'}</button></div></div>`;
+  }
+  function openPicker() {
+    if (OFFSITE) { toast('Open ' + PLATFORM + ' to fetch live deals.'); return; }
+    if (typeof captureUI === 'function') { autoScroll(); return; }
+    if (S.scanning) return;
+    sideOpen = false; S.pick = true; render();
   }
   function tgUI() {
     const t = store.tg;
@@ -573,7 +596,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
  <button class="ib" data-act="theme" title="${dark ? 'Light' : 'Dark'} mode">${ic(dark ? 'sun' : 'moon')}</button>
  <button class="hb" data-act="panel" title="Shopping list">${ic('bag')}<span class="lb">List</span>${count ? `<span class="n">${count}</span>` : ''}</button>
  <button class="ib" data-act="close" title="Close (Esc)">${ic('x')}</button>${S.scanning ? `<div class="prog" style="width:${pct}%"></div>` : ''}</header>
- <div class="body">${sideOpen ? '<div class="scrim side" data-act="side"></div>' : ''}${sidebar()}${mainView()}</div>${S.panel ? '<div class="scrim" data-act="closepanel"></div>' : ''}${drawer()}<div class="toast" id="toast"></div>`;
+ <div class="body">${sideOpen ? '<div class="scrim side" data-act="side"></div>' : ''}${sidebar()}${mainView()}</div>${S.panel ? '<div class="scrim" data-act="closepanel"></div>' : ''}${drawer()}${S.pick ? pickerUI() : ''}<div class="toast" id="toast"></div>`;
     const m = root.getElementById('main'); if (m) m.scrollTop = keepScroll;
     const a = root.querySelector('aside'); if (a) a.scrollTop = sideScroll;
     if (focused === 'q') { const i = root.querySelector('[data-in=q]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
@@ -658,12 +681,6 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
     try { await tgSend(`<b>PriceDrop Hunter</b> is connected for ${esc(PLATFORM)}.\nDeals from ${store.tg.minDisc}% off will arrive here.`); toast('Test message sent. Check Telegram.'); }
     catch (e) { toast('Telegram: ' + e.message); }
   }
-  // Auto-scan while this tab stays open (the panel can be closed).
-  setInterval(() => {
-    if (!+store.auto || S.scanning || OFFSITE || typeof captureUI === 'function') return;
-    if (Date.now() - (store.lastScan || 0) >= store.auto * 60000) scan();
-  }, 30000);
-
   // ───────────────────────── Events ─────────────────────────
   const reFilter = debounce(() => { S.shown = 60; render(); }, 150);
   root.addEventListener('input', e => {
@@ -682,7 +699,6 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
       if (k === 'tgOn' && v && !tgReady()) toast('Add your bot token and chat ID too');
       return;
     }
-    if (k === 'auto') { store.auto = +v; save(); render(); toast(+v ? `Auto-scan every ${v} min while this tab is open` : 'Auto-scan off'); return; }
     if (k === 'stockOnly') { store.stockOnly = v; save(); }
     else if (k === 'sort') { store.sort = v; save(); }
     else if (k === 'favOnly') S.favOnly = v; else if (k === 'newOnly') S.newOnly = v;
@@ -703,7 +719,9 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
       case 'grp': store.groups = store.groups.includes(id) ? store.groups.filter(x => x !== id) : store.groups.concat(id); save(); render(); break;
       case 'all': store.groups = GROUPS.map(g => g.id); save(); render(); break;
       case 'none': store.groups = []; save(); render(); break;
-      case 'scan': sideOpen = false; scan(); break;
+      case 'scan': openPicker(); break;
+      case 'pstart': if (!store.groups.length) { toast('Pick at least one category'); break; } S.pick = false; render(); scan(); break;
+      case 'pclose': S.pick = false; render(); break;
       case 'stop': S.ctl.stop = true; toast('Stopping…'); break;
       case 'autoscroll': if (typeof autoScroll === 'function') autoScroll(); break;
       case 'tgtest': tgTest(); break;
@@ -739,10 +757,11 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   document.addEventListener('keydown', e => {
     if (host.style.display === 'none') return;
     const typing = root.activeElement && /INPUT|SELECT/.test(root.activeElement.tagName);
-    if (e.key === 'Escape') { if (S.panel) { S.panel = false; render(); } else if (typing) root.activeElement.blur(); else api.hide(); }
+    if (e.key === 'Escape' && S.pick) { S.pick = false; render(); }
+    else if (e.key === 'Escape') { if (S.panel) { S.panel = false; render(); } else if (typing) root.activeElement.blur(); else api.hide(); }
     else if (!typing && !e.metaKey && !e.ctrlKey) {
       if (e.key === '/') { e.preventDefault(); const i = root.querySelector('[data-in=q]'); i && i.focus(); }
-      else if (e.key.toLowerCase() === 's') S.scanning ? (S.ctl.stop = true) : scan();
+      else if (e.key.toLowerCase() === 's') S.scanning ? (S.ctl.stop = true) : openPicker();
     }
     if (!typing || e.key === 'Escape') e.stopPropagation();
   }, true);
@@ -750,7 +769,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   // ───────────────────────── Public API ─────────────────────────
   let prevOverflow = '';
   const api = {
-    show() { host.style.display = 'block'; if (!OFFSITE && !S.scanning && !S.products.size && typeof captureUI !== 'function') setTimeout(scan, 400); prevOverflow = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden'; render(); },
+    show() { host.style.display = 'block'; if (!OFFSITE && !S.scanning && !S.products.size && typeof captureUI !== 'function') setTimeout(openPicker, 300); prevOverflow = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden'; render(); },
     hide() { host.style.display = 'none'; document.documentElement.style.overflow = prevOverflow; },
     toggle() { host.style.display === 'none' ? api.show() : api.hide(); }
   };
