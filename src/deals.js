@@ -430,7 +430,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
  aside{position:absolute;z-index:4;top:0;bottom:0;left:0;transform:translateX(-105%);transition:transform .22s;width:min(320px,88%);box-shadow:16px 0 40px rgba(0,0,0,.16);padding:18px 16px 40px}
  aside.open{transform:none}.menu-btn{display:inline-flex}.mob{display:flex}.scrim.side{display:block}
  header{padding:10px 12px;gap:8px;height:auto;flex-wrap:wrap}
- .logo{margin-right:0;min-width:0}.logo small,.logo .mk,.search kbd,.hb .lb,.sb .lb,[data-act=bell].ib,[data-act=theme].ib{display:none}
+ .logo{margin-right:0;min-width:0;flex:1 1 auto;overflow:hidden}.logo>div{min-width:0;overflow:hidden}header .sp{display:none}.logo small,.logo .mk,.search kbd,.hb .lb,.sb .lb,[data-act=bell].ib,[data-act=theme].ib{display:none}
  .logo b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .ib,.hb,.sb{height:38px}.ib{width:38px}.hb,.sb{padding:0 11px}
  .search{order:9;flex-basis:100%;max-width:none;min-width:0}.search input{height:40px}
@@ -661,17 +661,18 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   const tgReady = () => !!(store.tg.token && store.tg.chat);
   async function tgSend(text) {
     const url = 'https://api.telegram.org/bot' + store.tg.token + '/sendMessage';
-    const data = JSON.stringify({ chat_id: store.tg.chat, text, parse_mode: 'HTML', disable_web_page_preview: true });
+    // Form encoding keeps this a simple request: a JSON body triggers a CORS preflight that Telegram does not answer.
+    const data = new URLSearchParams({ chat_id: store.tg.chat, text, parse_mode: 'HTML', disable_web_page_preview: 'true' }).toString();
     // Userscript: GM_xmlhttpRequest is not limited by the shop's Content-Security-Policy.
     if (typeof GM_xmlhttpRequest === 'function') {
       return new Promise((res, rej) => GM_xmlhttpRequest({
-        method: 'POST', url, headers: { 'Content-Type': 'application/json' }, data,
+        method: 'POST', url, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, data,
         onload: r => { let j = {}; try { j = JSON.parse(r.responseText); } catch (e) { /* ignore */ } if (r.status === 200) res(); else rej(new Error(j.description || 'HTTP ' + r.status)); },
         onerror: () => rej(new Error('network error'))
       }));
     }
     let r;
-    try { r = await W.fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: data }); }
+    try { r = await W.fetch(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: data }); }
     catch (e) { throw new Error('this site blocks direct requests to Telegram. Use the userscript version for alerts.'); }
     if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.description || 'HTTP ' + r.status); }
   }
