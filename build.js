@@ -42,13 +42,8 @@ const launcher = `
   if(!window.__JMQ__) return;
   // Opened from the install page (#pricedrop): show Hunter straight away.
   if(/pricedrop/.test(location.hash)){ history.replaceState(null,'',location.pathname+location.search); return; }
+  // Otherwise start closed: the floating Deals button opens it.
   window.__JMQ__.hide();
-  var b=document.createElement('button');
-  b.textContent='PriceDrop';
-  b.setAttribute('aria-label','Open PriceDrop Hunter');
-  b.style.cssText='position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483646;background:#0078ad;color:#fff;font:700 14px system-ui,sans-serif;border:0;border-radius:999px;padding:12px 18px;box-shadow:0 4px 16px rgba(0,0,0,.3);cursor:pointer';
-  b.onclick=function(){window.__JMQ__.toggle()};
-  document.body.appendChild(b);
 })();
 `;
 fs.writeFileSync(path.join(__dirname, 'dist/jiomart-deals.user.js'), header + code + '\n' + launcher);

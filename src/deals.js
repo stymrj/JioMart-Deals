@@ -789,13 +789,46 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
 
   // ───────────────────────── Public API ─────────────────────────
   let prevOverflow = '';
+  // Floating button left on the store page while the panel is closed (drag it up or down).
+  const HD = (CSS.match(/--hd:(#[0-9a-f]{3,8})/i) || [])[1] || '#2874f0';
+  const fab = document.createElement('div');
+  fab.style.cssText = 'all:initial;position:fixed;z-index:2147483646;right:14px;display:none';
+  const fabRoot = fab.attachShadow({ mode: 'open' });
+  fabRoot.innerHTML = `<style>
+.f{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:9px;padding:7px 15px 7px 7px;border-radius:999px;background:${HD};color:#fff;font:800 15px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.28),0 0 0 2px rgba(255,255,255,.9);user-select:none;-webkit-user-select:none;touch-action:none;transition:transform .15s}
+.f:hover{transform:translateY(-2px)}.f.drag{cursor:grabbing;transform:scale(1.04)}
+.mk{width:34px;height:34px;border-radius:50%;background:#ffd43b;color:#111;display:grid;place-items:center}
+.n{background:#ffd43b;color:#111;border-radius:99px;padding:3px 8px;font-size:12px}.n:empty{display:none}
+.x{all:unset;position:absolute;top:-7px;left:-7px;width:20px;height:20px;border-radius:50%;background:#111;color:#fff;display:grid;place-items:center;font:700 12px/1 sans-serif;cursor:pointer;opacity:.85}
+.x:hover{opacity:1}
+</style><div style="position:relative"><button class="f" title="Open PriceDrop Hunter · drag to move"><span class="mk"><svg viewBox="0 0 16 16" width="18" height="18"><path d="M8 2.5v8M4.5 7.2 8 11l3.5-3.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 13.8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>Deals<span class="n"></span></button><button class="x" title="Hide this button on this page" aria-label="Hide">×</button></div>`;
+  const fabBtn = fabRoot.querySelector('.f');
+  const placeFab = () => { fab.style.bottom = Math.max(8, Math.min(window.innerHeight - 64, +store.fabY || 24)) + 'px'; };
+  let drag = null;
+  fabBtn.addEventListener('pointerdown', e => { drag = { y: e.clientY, b: parseFloat(fab.style.bottom) || 24, moved: false }; fabBtn.setPointerCapture(e.pointerId); });
+  fabBtn.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    if (Math.abs(dy) > 5) { drag.moved = true; fabBtn.classList.add('drag'); }
+    if (drag.moved) { store.fabY = drag.b - dy; placeFab(); }
+  });
+  fabBtn.addEventListener('pointerup', () => {
+    const moved = drag && drag.moved; drag = null; fabBtn.classList.remove('drag');
+    if (moved) save(); else api.show();
+  });
+  fabRoot.querySelector('.x').addEventListener('click', () => { fab.remove(); });
+  function updateFab() {
+    const n = S.products.size ? filtered().length : 0;
+    fabRoot.querySelector('.n').textContent = n ? String(n) : '';
+  }
   const api = {
-    show() { host.style.display = 'block'; if (!OFFSITE && !S.scanning && !S.products.size && typeof captureUI !== 'function') setTimeout(openPicker, 300); prevOverflow = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden'; render(); },
-    hide() { host.style.display = 'none'; document.documentElement.style.overflow = prevOverflow; },
+    show() { fab.style.display = 'none'; host.style.display = 'block'; if (!OFFSITE && !S.scanning && !S.products.size && typeof captureUI !== 'function') setTimeout(openPicker, 300); prevOverflow = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden'; render(); },
+    hide() { host.style.display = 'none'; document.documentElement.style.overflow = prevOverflow; updateFab(); placeFab(); fab.style.display = 'block'; },
     toggle() { host.style.display === 'none' ? api.show() : api.hide(); }
   };
   window.__JMQ__ = api;
   document.body.appendChild(host);
+  document.body.appendChild(fab);
   api.show();
   if (typeof P !== 'undefined' && P.install && !OFFSITE) P.install(ingest);
 })();
