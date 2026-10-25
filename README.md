@@ -52,7 +52,7 @@ Uses JioMart's product API (the same one the site calls) with the delivery pinco
 ## Limitations
 
 - Set your JioMart pincode first.
-- Very high discounts can include sellers' inflated list prices; check before buying.
+- Items listed at more than 95% off are hidden: on JioMart these are almost always inflated list prices.
 - The API is undocumented and can change.
 
 ## Project layout
