@@ -28,7 +28,7 @@ fs.writeFileSync(path.join(__dirname, 'dist/deals.js'), code);
 const header = `// ==UserScript==
 // @name         PriceDrop Hunter for JioMart
 // @namespace    jiomart-deals
-// @version      2.0.0
+// @version      2.1.0
 // @description  Scan JioMart by category, sorted by discount, and see the biggest deals first.
 // @match        https://www.jiomart.com/*
 // @run-at       document-idle

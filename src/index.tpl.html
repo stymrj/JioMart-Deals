@@ -284,6 +284,7 @@ footer .h{color:var(--ac)}
     <details><summary>Why do I get no results at first?</summary><p>JioMart needs a delivery pincode. Open jiomart.com, set your pincode, then scan again.</p></details>
     <details><summary>Is it official?</summary><p>No. It is an independent tool, not affiliated with JioMart. It only reads what your account can already see.</p></details>
     <details><summary>Will it keep working?</summary><p>JioMart can change its internal APIs at any time. The parser reads responses loosely to survive small changes, and the tool tells you when a scan returns nothing.</p></details>
+    <details><summary>What is new in v2 (8 November 2026)?</summary><p>The fetch layer now uses JioMart's current Vertex product endpoint with store routing from your pincode, falling back to the older catalogue endpoint, and prices are read max-first — fixing scans that fetched products but showed a blank grid. There is also a standalone Python Telegram bot in <code>bot-v2/</code> that alerts around the clock. See the README and CHANGELOG in the repo.</p></details>
     <details><summary>How does price-drop tracking work?</summary><p>After each scan the tool remembers every price in your browser. Next time, new products are labelled New and cheaper ones Price drop.</p></details>
     <details><summary>Where does the data come from?</summary><p>Live from JioMart, inside your own logged-in tab and for your delivery address. Nothing is stored on any server; saved items and price history stay in your browser.</p></details>
   </div>
