@@ -14,6 +14,7 @@ import gc
 import json
 import os
 import random
+import re
 import time
 import urllib.parse
 
@@ -97,23 +98,39 @@ def fetch_delivery_promise(loc):
     return {"store_ids": store_ids, "polygon_ids": polygon_ids}
 
 
+def _num(node):
+    """One price-ish value as a float. Strings like "₹1,999" or "1999.50"
+    parse to 1999.0 / 1999.5; anything unreadable is 0.0."""
+    if node is None or isinstance(node, bool):
+        return 0.0
+    if isinstance(node, (int, float)):
+        return float(node)
+    m = re.search(r"\d+(?:\.\d+)?", str(node).replace(",", ""))
+    return float(m.group(0)) if m else 0.0
+
+
 def _price_of(node):
     """Price node may be {max, min}, a flat number, or a string."""
     if node is None:
         return 0.0
     if isinstance(node, dict):
-        for key in ("max", "min"):
-            try:
-                v = float(node.get(key))
-                if v:
-                    return v
-            except (TypeError, ValueError):
-                continue
+        for key in ("max", "min", "value", "amount"):
+            v = _num(node.get(key))
+            if v:
+                return v
         return 0.0
-    try:
-        return float(str(node).replace(",", ""))
-    except (TypeError, ValueError):
+    return _num(node)
+
+
+def _disc_of(node):
+    """Explicit discount as percent: a number (90, 87.5) or a string
+    ("90%", "87.5%"). 0 (or absent/unreadable) means no discount stated."""
+    if node is None or isinstance(node, bool):
         return 0.0
+    if isinstance(node, (int, float)):
+        return float(node)
+    m = re.search(r"\d+(?:\.\d+)?", str(node).replace(",", ""))
+    return float(m.group(0)) if m else 0.0
 
 
 def parse_product(raw):
@@ -121,13 +138,40 @@ def parse_product(raw):
     try:
         name = raw.get("name") or ""
         price_node = raw.get("price") or {}
-        sell = _price_of(price_node.get("effective")) or _price_of(price_node.get("marked"))
-        mrp = _price_of(price_node.get("marked")) or sell
+        sell = _price_of(price_node.get("effective")) or _price_of(price_node.get("marked")) \
+            or _price_of(raw.get("selling_price")) or _price_of(raw.get("sale_price"))
+        # Strikethrough (MRP) may live under price.marked, price.mrp, or a
+        # top-level field on the item — read every shape before giving up.
+        mrp = _price_of(price_node.get("marked")) or _price_of(price_node.get("mrp")) \
+            or _price_of(raw.get("mrp")) or _price_of(raw.get("list_price")) \
+            or _price_of(raw.get("strike_price")) or _price_of(raw.get("original_price")) \
+            or sell
         if not name or not sell:
             return None
         if mrp < sell:
             mrp = sell
-        if mrp > sell * 20:  # 95%+ off: almost always an inflated list price
+        if mrp <= sell:
+            # No usable MRP, but the API states a discount: derive the MRP
+            # from sell price + discount instead of reporting 0% off (which
+            # the min-discount filter then hides, so the deal never appears).
+            disc_raw = None
+            for key in ("discount", "discount_pct", "discount_percent", "discount_percentage"):
+                if raw.get(key) is not None:
+                    disc_raw = raw.get(key)
+                    break
+            if disc_raw is None:
+                for key in ("discount", "discount_pct"):
+                    if price_node.get(key) is not None:
+                        disc_raw = price_node.get(key)
+                        break
+            d = _disc_of(disc_raw)
+            if 0 < d < 100:
+                mrp = sell / (1 - d / 100)
+        # 2026-11-09: the old guard dropped anything over 95% off (mrp >
+        # sell * 20), so every genuine 96-99% clearance item vanished
+        # before it could alert. Only >99% off (mrp > sell * 100) is still
+        # treated as an inflated list price.
+        if mrp > sell * 100:  # >99% off: almost always an inflated list price
             return None
         disc = round((mrp - sell) / mrp * 100, 1) if mrp > sell else 0.0
         brand = raw.get("brand")
@@ -208,7 +252,14 @@ class Fetcher:
                 out.append(p)
                 if len(out) >= limit:
                     break
-            if not pg.get("has_next"):
+            # Paging: has_next/next_id when the API sends them; a full page
+            # with neither flag still implies more (mirrors the browser
+            # tool, which treats a full page as "more" instead of stopping
+            # the scan after page 1 when the flag is absent).
+            has_next = pg.get("has_next")
+            if has_next is None:
+                has_next = bool(pg.get("next_id")) or len(items) >= 50
+            if not has_next:
                 break
             page += 1
             time.sleep(random.uniform(0.5, 1.1))  # polite gap between pages

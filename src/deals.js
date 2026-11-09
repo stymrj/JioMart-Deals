@@ -18,7 +18,13 @@
   // v2: the product API returns prices as {max, min} (and sometimes a flat
   // number). Prefer max — the per-unit selling price — and fall back to min,
   // so a payload that only carries max no longer parses as ₹0 (blank results).
-  const priceField = o => { if (o == null) return 0; if (typeof o === 'object') return price(o.max) || price(o.min); return price(o); };
+  // value/amount are accepted too: some catalogue shapes carry the price there.
+  const priceField = o => { if (o == null) return 0; if (typeof o === 'object') return price(o.max) || price(o.min) || price(o.value) || price(o.amount); return price(o); };
+  // Explicit discount the API sometimes carries instead of a marked price:
+  // a number (90, 87.5) or a string ("90%", "87.5%"). Read as percent; 0
+  // (or absent) means "no discount stated". Only used when no usable MRP
+  // exists — prices, when present, always win over this field.
+  const discPctOf = v => { if (v == null) return 0; if (typeof v === 'number') return v; const m = String(v).match(/\d+(\.\d+)?/); return m ? +m[0] : 0; };
   const brandOf = x => { const b = x.brand; if (b && typeof b === 'object') return String(b.name || ''); if (typeof b === 'string') return b; return String(x.brand_name || ''); };
   const imgOf = x => { const m = x.medias && x.medias[0]; if (m) return m.url || m.image_url || ''; if (typeof x.image === 'string') return x.image; if (x.images && x.images[0]) return typeof x.images[0] === 'string' ? x.images[0] : (x.images[0].url || ''); return ''; };
   const guessBrand = t => (String(t).trim().split(/\s+/)[0] || '').replace(/[^\w&'-]/g, '');
@@ -112,11 +118,29 @@
     // v2: prefer .max (the price the Nov 2026 API shape actually carries);
     // .min and flat numbers are kept as fallbacks. A missing sell price
     // still drops the item — but a present price never parses as ₹0 again.
-    const sell = priceField(pr.effective) || priceField(pr.marked);
-    const mrp0 = priceField(pr.marked) || sell;
+    const sell = priceField(pr.effective) || priceField(pr.marked) || priceField(x.selling_price) || priceField(x.sale_price);
+    // Strikethrough (MRP) may live under price.marked, price.mrp, or a
+    // top-level field on the item — read every shape before giving up, so
+    // an item is never shown at 0% off just because its MRP moved fields.
+    const mrp0 = priceField(pr.marked) || priceField(pr.mrp) || priceField(x.mrp) || priceField(x.list_price) || priceField(x.strike_price) || priceField(x.original_price) || sell;
     if (!x.name || !sell) return null;
-    const mrp = mrp0 < sell ? sell : mrp0, h = x.hierarchy || {};
-    if (mrp > sell * 20) return null; // 95%+ off is almost always an inflated list price
+    let mrp = mrp0 < sell ? sell : mrp0;
+    // No usable MRP, but the API states a discount: derive the MRP from
+    // sell price + discount instead of showing 0% off (which the minimum
+    // discount filter then hides, so the deal never appears at all).
+    if (mrp <= sell) {
+      let discRaw;
+      for (const k of ['discount', 'discount_pct', 'discount_percent', 'discount_percentage']) if (x[k] != null) { discRaw = x[k]; break; }
+      if (discRaw == null) for (const k of ['discount', 'discount_pct']) if (pr[k] != null) { discRaw = pr[k]; break; }
+      const d = discPctOf(discRaw);
+      if (d > 0 && d < 100) mrp = sell / (1 - d / 100);
+    }
+    const h = x.hierarchy || {};
+    // 2026-11-09: the old guard dropped anything over 95% off (mrp >
+    // sell * 20), so every genuine 96–99% clearance item vanished before
+    // it could render. Only >99% off (mrp > sell * 100) is still treated
+    // as an inflated list price.
+    if (mrp > sell * 100) return null;
     const cats = Array.isArray(x.categories) ? x.categories.map(c => c && c.name).filter(Boolean) : [];
     const c = (h.l1_category && h.l1_category.name) || cats[0] || cat, sub = (h.l2_category && h.l2_category.name) || cats[1];
     // v2 stock check: sellable must be true, and when the API reports
@@ -801,7 +825,9 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
     { uid: 'ST2', name: 'Almonds 500g', brand: { name: 'Test' }, slug: 'almonds-500g', price: { effective: { min: 349 }, marked: { min: 699 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Cooking Essentials' } } },
     { uid: 'ST3', name: 'Oats 1 kg', brand: { name: 'Test' }, slug: 'oats-1-kg', price: { effective: 149, marked: 220 }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Cooking Essentials' } } },
     { uid: 'ST4', name: 'Miracle Balm 10g', brand: { name: 'Test' }, slug: 'miracle-balm-10g', price: { effective: { max: 5 }, marked: { max: 999 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Beauty' } } },
-    { uid: 'ST5', name: 'No Price Item', brand: { name: 'Test' }, slug: 'no-price-item', price: { effective: { max: 0 }, marked: { max: 0 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Beauty' } } }
+    { uid: 'ST5', name: 'No Price Item', brand: { name: 'Test' }, slug: 'no-price-item', price: { effective: { max: 0 }, marked: { max: 0 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Beauty' } } },
+    { uid: 'ST6', name: 'Clearance Soap 4 pc', brand: { name: 'Test' }, slug: 'clearance-soap-4-pc', price: { effective: { max: 40 }, marked: { max: 1000 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Personal Care' } } },
+    { uid: 'ST7', name: 'No-MRP Shampoo 340 ml', brand: { name: 'Test' }, slug: 'no-mrp-shampoo-340-ml', discount: '90%', price: { effective: { max: 100 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Personal Care' } } }
   ];
   function runSelfTest() {
     const p1 = normalise(SELFTEST_FIXTURE[0], 'Cooking Essentials');
@@ -809,6 +835,8 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
     const p3 = normalise(SELFTEST_FIXTURE[2], 'Cooking Essentials');
     const p4 = normalise(SELFTEST_FIXTURE[3], 'Beauty');
     const p5 = normalise(SELFTEST_FIXTURE[4], 'Beauty');
+    const p6 = normalise(SELFTEST_FIXTURE[5], 'Personal Care');
+    const p7 = normalise(SELFTEST_FIXTURE[6], 'Personal Care');
     const u1 = p1 && unitOf(p1.title);
     const cases = [
       { name: 'Max-only price reads (₹189, 55% off)', ok: !!p1 && p1.price === 189 && p1.disc === 55, detail: 'Expected price 189 and 55% off.' },
@@ -816,6 +844,8 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
       { name: 'Flat-number price reads (₹149)', ok: !!p3 && p3.price === 149, detail: 'Expected price 149 from a flat-number payload.' },
       { name: 'Inflated MRP rejected (₹5 vs ₹999)', ok: p4 === null, detail: 'A 99%+ "discount" is an inflated list price and must be dropped.' },
       { name: 'No-price item rejected', ok: p5 === null, detail: 'An item with no price must not render as a ₹0 card.' },
+      { name: '96% off parses (₹40 vs ₹1,000)', ok: !!p6 && p6.price === 40 && p6.disc === 96, detail: 'Expected a genuine 96% clearance item to parse at 96% off, not be dropped as an inflated MRP.' },
+      { name: 'No-MRP item with an explicit 90% discount parses', ok: !!p7 && p7.price === 100 && p7.disc === 90, detail: 'Expected the discount field to supply the MRP when no marked price is carried.' },
       { name: 'Unit price parses (Atta 5 kg → ₹37.8/kg)', ok: !!u1 && u1.base === 'kg' && u1.qty === 5, detail: 'Expected 5 kg so the value sort can rank it.' }
     ];
     return cases;

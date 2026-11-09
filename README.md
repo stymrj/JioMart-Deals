@@ -16,6 +16,7 @@ The v2 port fixed the fetch layer; v2.1 goes further than the baseline in ways t
 - **Deeper scans, with progress.** Default depth is 3 pages per category (up from 2), up to 6 pages, plus a one-tap **Deep scan** (all 20 categories, 5 pages each, scanned in parallel) with a live per-page progress readout. Results are de-duplicated across pages and categories, keeping the best discount per product.
 - **Cross-category best-value row.** Beside the biggest-%-off grid, a "Best value per kg / litre" row ranks the cheapest unit price across every category scanned — a cheap staple no longer loses to a high-%-off snack.
 - **Multi-keyword search.** Search `atta, rice` to match either (comma = or); words without a comma must all match. Brand names are searchable too.
+- **Highest discounts actually fetch (2026-11-09).** The old parser dropped anything over 95% off as an "inflated MRP", so genuine 96–99% clearance items never appeared — and items with no marked price parsed at 0% off and vanished under the minimum-discount filter. The guard now only rejects >99% off, and an explicit discount field (or an MRP under a different field name) supplies the discount when no marked price is carried, so the biggest discounts render first in Best deals. Regression test: `fixtures/sample-high-discount.json` + `node test-results-tab.js` (15 of 16 parse; only the 99.5% inflated-MRP item is still rejected).
 - **Bot: multi-pincode + exports.** `bot-v2/` scans several pincodes in one run (`--pincode 560045 --pincode 110001`, or `JIOMART_PINCODES`), diffing each against its own price history, and `--export csv|json` writes every fetched product to `exports/` for spreadsheets or cross-store comparison.
 
 ## What it does
@@ -39,6 +40,7 @@ The v2 port fixed the fetch layer; v2.1 goes further than the baseline in ways t
 
 - **Fetch layer rewritten for the current JioMart API shape.** Scans now use the Vertex product endpoint (`/ext/vertex/application/api/v1.0/products`, `sort_on=discount_dsc`, 50 per page) with store routing from the delivery-promise API (store IDs + polygon IDs resolved once per scan from your pincode), and fall back to the older catalogue endpoint if Vertex answers 401/403/404. No token is embedded in the bookmarklet — it runs in your own signed-in session.
 - **Blank-results bug fixed.** Prices are now read max-first (`price.effective.max`, falling back to `.min` and flat numbers). Previously a payload carrying only `max` parsed as ₹0 and every product was dropped, so a successful fetch showed an empty grid. A regression test (`node test-results-tab.js`) proves 10 of 10 valid fixture products render as cards.
+- **Highest-discount fix (2026-11-09).** The inflated-MRP guard (`mrp > sell * 20`) dropped every genuine 96–99% off item before it could render, and items with no marked price parsed at 0% off and vanished under the minimum-discount filter — so the Best tab could never show more than 95% off. The guard now only rejects >99% off, an explicit discount field (number or `"90%"` string, on the item or under `price`) derives the MRP when none is carried, and strikethrough prices are read from `price.mrp` and top-level `mrp`/`list_price`/`strike_price`/`original_price` too. The same fix is mirrored in the bot (`bot-v2/fetcher.py`, which additionally now parses string MRPs like `"₹1,999"` and keeps paging when a full page arrives without a `has_next` flag). Self-test grew from 6 to 8 checks; see `fixtures/sample-high-discount.json`.
 - **Stock check corrected.** A product counts as in stock when it is sellable *and*, when the API reports in-stock variants, at least one size is listed. When the API omits variant data, sellable alone decides — so older responses no longer hide everything.
 - **Clearer empty states.** If JioMart returns a login page instead of data, or rows the parser cannot read, the scan now says so in a toast instead of showing a silent empty grid.
 - **New Python Telegram bot (`bot-v2/`).** Fetcher + SQLite history + deal differ + Telegram notifier, runnable on your own machine or a free host. Sends only new deals, price drops, restocks and discount increases (7-day cooldown for unchanged deals). See [Bot setup](#bot-setup-telegram-alerts-around-the-clock) below.
@@ -47,7 +49,7 @@ The v2 port fixed the fetch layer; v2.1 goes further than the baseline in ways t
 
 ## Self-test (no network needed)
 
-Open Hunter, press **Self-test** in the menu. It runs the real parser on bundled samples — max-only, min-only and flat-number prices, an inflated-MRP reject, a no-price reject, and unit-price parsing — and shows 6 of 6 checks passed when the tool is healthy. If a check fails after a JioMart site change, that is the first sign the parser needs an update, before you waste a scan.
+Open Hunter, press **Self-test** in the menu. It runs the real parser on bundled samples — max-only, min-only and flat-number prices, an inflated-MRP reject, a no-price reject, a 96%-off clearance item, a no-MRP item with an explicit 90% discount, and unit-price parsing — and shows 8 of 8 checks passed when the tool is healthy. If a check fails after a JioMart site change, that is the first sign the parser needs an update, before you waste a scan.
 
 ## Install
 
@@ -122,12 +124,12 @@ Uses JioMart's product API (the same one the site calls) with the delivery pinco
 
 ```bash
 node --check src/deals.js
-node test-results-tab.js   # PASS: 10 of 10 valid products render as cards (12 raw, 2 correctly rejected)
-node test/power-features.test.js   # PASS: 22 of 22 checks (multi-keyword search, unit prices, dedupe, diagnostics, self-test, best-value row)
+node test-results-tab.js   # PASS: 10 of 10 valid products render as cards (12 raw, 2 correctly rejected); plus highest-discount PASS: 15 of 16 parse, 99% renders first
+node test/power-features.test.js   # PASS: 27 of 27 checks (multi-keyword search, unit prices, dedupe, diagnostics, self-test, best-value row, highest-discount)
 node build.js              # rebuilds dist/ and index.html
 ```
 
-Live platform APIs were not verified from this machine — the tests use a saved sample payload (`fixtures/sample-api.json`) and a stubbed fetcher for the bot export test. Please do one manual browser test: open jiomart.com, set your pincode, run the bookmarklet and confirm a scan returns cards; press **Self-test** and confirm 6 of 6 checks pass.
+Live platform APIs were not verified from this machine — the tests use a saved sample payload (`fixtures/sample-api.json`) and a stubbed fetcher for the bot export test. Please do one manual browser test: open jiomart.com, set your pincode, run the bookmarklet and confirm a scan returns cards; press **Self-test** and confirm 8 of 8 checks pass.
 
 ## Project layout
 

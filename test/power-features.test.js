@@ -14,9 +14,11 @@ function extract(startMarker, endMarker) {
   if (start < 0 || (endMarker && end < 0)) throw new Error('could not find ' + startMarker);
   return src.slice(start, end < 0 ? undefined : end);
 }
+const discPctSrc = src.indexOf('const discPctOf = ') < 0 ? 'const discPctOf = () => 0;' : extract('const discPctOf = ', ';\n');
 const helpers = [
   extract('const price = ', ';\n  // v2:'),
   extract('const priceField = ', ';\n'),
+  discPctSrc,
   extract('const brandOf = ', ';\n'),
   extract('const imgOf = ', ';\n'),
   extract('const guessBrand = ', ';\n'),
@@ -84,16 +86,28 @@ check('emptyReason: rows parsed but filtered -> filters message with min %', (()
 
 // ── 5. Built-in self-test (same cases the in-browser button runs) ──
 const self = runSelfTest();
-check('runSelfTest: all 6 bundled checks pass', self.length === 6 && self.every(c => c.ok));
+check('runSelfTest: all 8 bundled checks pass', self.length === 8 && self.every(c => c.ok));
 if (!self.every(c => c.ok)) self.filter(c => !c.ok).forEach(c => console.log('  failed self-test case:', c.name));
 
 // ── 6. Cross-category best-value row: cheapest per kg wins ──
 const kg = parsed.filter(p => p.unit && p.unit.base === 'kg').sort((a, b) => unitVal(a) - unitVal(b));
 check('best-value: cheapest per kg is Atta 5 kg at Rs 37.8/kg', kg.length > 0 && kg[0].id === 'JM001' && Math.abs(unitVal(kg[0]) - 37.8) < 0.01);
 
+// ── 7. Highest-discount regression (2026-11-09) ──
+// The old mrp > sell * 20 guard dropped every genuine 96–99% clearance
+// item; items with no MRP parsed at 0% off and vanished under minDisc.
+const hdFixture = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'sample-high-discount.json'), 'utf8'));
+const hdParsed = hdFixture.items.map(x => normalise(x, 'Cooking Essentials')).filter(Boolean);
+const hdById = id => hdParsed.find(p => p.id === id);
+check('high-discount: 96% off parses (HD04)', !!hdById('HD04') && hdById('HD04').disc === 96);
+check('high-discount: 99% off parses and is the highest (HD06)', !!hdById('HD06') && hdById('HD06').disc === 99 && hdParsed.every(p => p.disc <= 99));
+check('high-discount: no-MRP + explicit discount parses (HD08, 90%)', !!hdById('HD08') && hdById('HD08').disc === 90);
+check('high-discount: 99.5% off still rejected as inflated MRP (HD07)', !hdById('HD07'));
+check('high-discount: clearance with empty sizes parses, flagged out of stock (HD12)', !!hdById('HD12') && hdById('HD12').inStock === false);
+
 console.log('Checks passed: ' + pass + ' / ' + (pass + fail));
 if (fail) {
   console.log('FAIL: power-features — ' + fail + ' check(s) failed');
   process.exit(1);
 }
-console.log('PASS: power features — ' + pass + ' of ' + pass + ' checks passed (multi-keyword search, unit prices, dedupe, diagnostics, self-test, best-value row)');
+console.log('PASS: power features — ' + pass + ' of ' + pass + ' checks passed (multi-keyword search, unit prices, dedupe, diagnostics, self-test, best-value row, highest-discount)');
