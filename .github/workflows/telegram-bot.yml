@@ -1,0 +1,90 @@
+# Telegram deal alerts — JioMart bot (bot-v2, Python).
+#
+# Schedule: hourly at :15 past the hour, 03:15-18:15 UTC = 08:45-23:45 IST.
+# (GitHub cron is UTC; IST is UTC+5:30, so 03:15 UTC is 08:45 IST.)
+# Scheduled runs do nothing until you set the repository variable
+# BOT_ENABLED to "true" (repo Settings -> Variables). Manual runs from the
+# Actions tab always run, with an optional dry run that prints the messages
+# instead of sending them.
+#
+# Setup (repo Settings -> Secrets and variables -> Actions):
+#   Secrets (never put real values in this file):
+#     TELEGRAM_BOT_TOKEN  token from @BotFather
+#     TELEGRAM_CHAT_ID    your chat ID from @userinfobot
+#     JIOMART_BEARER      optional: your JioMart session bearer token, from
+#                         your browser's DevTools Network tab (any
+#                         jiomart.com API request -> Authorization header).
+#                         Leave unset to try without one; if JioMart
+#                         answers 401/403, set it. It expires when your
+#                         browser session does — refresh it when alerts stop.
+#   Variables:
+#     BOT_ENABLED         "true" to let the schedule run
+#     JIOMART_PINCODE     delivery pincode to scan (default 560045)
+#     JIOMART_PINCODES    optional comma-separated pincodes; when set, it
+#                         wins over JIOMART_PINCODE (the bot diffs each
+#                         pincode against its own price history)
+#     MIN_DISCOUNT        only alert deals at or above this % (default 50)
+#     DEAL_LIMIT          max deals fetched per category per run (default 20)
+#
+# State: the bot's SQLite history (bot-v2/jiomart_bot.db) is cached between
+# runs, so new deals / price drops / restocks are only alerted once and
+# unchanged deals repeat only after 7 days. The filename is stable across
+# runs — the cache path covers exactly that file, so the history (and the
+# 7-day cooldown) survives from one run to the next.
+name: Telegram deal alerts
+
+on:
+  schedule:
+    - cron: '15 3-18 * * *'   # hourly, 08:45 to 23:45 IST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print the messages instead of sending them
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-bot
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    # Scheduled runs start only after you set the repository variable BOT_ENABLED to true.
+    if: github.event_name == 'workflow_dispatch' || vars.BOT_ENABLED == 'true'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      JIOMART_BEARER: ${{ secrets.JIOMART_BEARER }}
+      JIOMART_PINCODE: ${{ vars.JIOMART_PINCODE || '560045' }}
+      JIOMART_PINCODES: ${{ vars.JIOMART_PINCODES }}
+      MIN_DISCOUNT: ${{ vars.MIN_DISCOUNT || '50' }}
+      DEAL_LIMIT: ${{ vars.DEAL_LIMIT || '20' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r bot-v2/requirements.txt
+      - name: Restore last run
+        uses: actions/cache/restore@v4
+        with:
+          path: bot-v2/jiomart_bot.db
+          key: bot-state-${{ github.run_id }}
+          restore-keys: bot-state-
+      - name: Scan and alert
+        run: |
+          ARGS="--once"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python bot-v2/bot.py $ARGS
+      - name: Remember this run
+        if: always() && hashFiles('bot-v2/jiomart_bot.db') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: bot-v2/jiomart_bot.db
+          key: bot-state-${{ github.run_id }}-${{ github.run_attempt }}
