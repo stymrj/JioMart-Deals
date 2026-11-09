@@ -1,6 +1,7 @@
 # Changelog
 
 ## v2.1.0 — 2026-11-08
+- Fixed (2026-11-09): install button now reads “JioMart Deals” instead of the generic “PriceDrop Hunter”, so the dragged bookmark is named after this store instead of colliding with every other tool.
 
 Better than the baseline, not just a port of it:
 

@@ -43,6 +43,7 @@ The v2 port fixed the fetch layer; v2.1 goes further than the baseline in ways t
 - **Clearer empty states.** If JioMart returns a login page instead of data, or rows the parser cannot read, the scan now says so in a toast instead of showing a silent empty grid.
 - **New Python Telegram bot (`bot-v2/`).** Fetcher + SQLite history + deal differ + Telegram notifier, runnable on your own machine or a free host. Sends only new deals, price drops, restocks and discount increases (7-day cooldown for unchanged deals). See [Bot setup](#bot-setup-telegram-alerts-around-the-clock) below.
 - **Install video:** [watch the walkthrough (MP4)](https://stymrj.github.io/PriceDrop-Hunter/media/install-demo.mp4) · [GIF](https://stymrj.github.io/PriceDrop-Hunter/media/install-demo.gif)
+- **Bookmark name fixed (2026-11-09):** the install button now reads **JioMart Deals** instead of the generic “PriceDrop Hunter”, so the bookmark you drag to your bookmarks bar is named after this store.
 
 ## Self-test (no network needed)
 
@@ -50,9 +51,9 @@ Open Hunter, press **Self-test** in the menu. It runs the real parser on bundled
 
 ## Install
 
-**Bookmarklet (desktop).** Run `node build.js`, open `index.html`, and drag the button to your bookmarks bar. Open jiomart.com and click the bookmark.
+**Bookmarklet (desktop).** Run `node build.js`, open `index.html`, and drag the **JioMart Deals** button to your bookmarks bar. Open jiomart.com and click the bookmark.
 
-**Bookmarklet (mobile).** On the install page, tap **Copy mobile loader**. It is a bookmark of about 380 characters that loads the latest version from GitHub Pages, so it fits on any phone. Create a bookmark, paste it as the address, and run it from the address bar on jiomart.com. The full bookmarklet (about 45 KB, no network needed) is in `dist/bookmarklet.txt`.
+**Bookmarklet (mobile).** On the install page, tap **Copy mobile loader**. It is a bookmark of about 380 characters that loads the latest version from GitHub Pages, so it fits on any phone. Create a bookmark named **JioMart Deals**, paste it as the address, and run it from the address bar on jiomart.com. The full bookmarklet (about 45 KB, no network needed) is in `dist/bookmarklet.txt`.
 
 **Userscript.** Install `dist/jiomart-deals.user.js` in Tampermonkey or Violentmonkey. A small Deals button appears on every jiomart.com page.
 
