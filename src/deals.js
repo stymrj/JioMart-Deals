@@ -15,6 +15,18 @@
   const debounce = (f, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
 
   const price = v => { if (v == null) return 0; if (typeof v === 'number') return v; const m = String(v).replace(/,/g, '').match(/\d+(\.\d+)?/); return m ? +m[0] : 0; };
+  // v2: the product API returns prices as {max, min} (and sometimes a flat
+  // number). Prefer max — the per-unit selling price — and fall back to min,
+  // so a payload that only carries max no longer parses as ₹0 (blank results).
+  // value/amount are accepted too: some catalogue shapes carry the price there.
+  const priceField = o => { if (o == null) return 0; if (typeof o === 'object') return price(o.max) || price(o.min) || price(o.value) || price(o.amount); return price(o); };
+  // Explicit discount the API sometimes carries instead of a marked price:
+  // a number (90, 87.5) or a string ("90%", "87.5%"). Read as percent; 0
+  // (or absent) means "no discount stated". Only used when no usable MRP
+  // exists — prices, when present, always win over this field.
+  const discPctOf = v => { if (v == null) return 0; if (typeof v === 'number') return v; const m = String(v).match(/\d+(\.\d+)?/); return m ? +m[0] : 0; };
+  const brandOf = x => { const b = x.brand; if (b && typeof b === 'object') return String(b.name || ''); if (typeof b === 'string') return b; return String(x.brand_name || ''); };
+  const imgOf = x => { const m = x.medias && x.medias[0]; if (m) return m.url || m.image_url || ''; if (typeof x.image === 'string') return x.image; if (x.images && x.images[0]) return typeof x.images[0] === 'string' ? x.images[0] : (x.images[0].url || ''); return ''; };
   const guessBrand = t => (String(t).trim().split(/\s+/)[0] || '').replace(/[^\w&'-]/g, '');
   const EXCLUDED = [];
   const allowed = p => { const t = p.title.toLowerCase(); return !EXCLUDED.some(k => t.includes(k)); };
@@ -44,7 +56,56 @@
     { id: "personal-care-grooming-appliances-l1", name: "Grooming Appliances", subs: [["personal-care-grooming-appliances-l1", "Grooming Appliances"]] },
     { id: "camera-musical-instruments-l1", name: "Camera & Music", subs: [["camera-musical-instruments-l1", "Camera & Music"]] }
   ];
-  let noLoc = false;
+  let noLoc = false, fetchNote = '';
+  // v2.1 diagnostics: why a scan came back empty, recorded per scan so the
+  // UI can name the cause (no pincode / signed out / rate-limited / empty
+  // category / unreadable payload / filters) instead of a generic toast.
+  let diag = { fetched: 0, parsed: 0, unparsed: 0, status: 0, loginPage: false, rateLimited: false, serverErr: false, authFail: false };
+  function resetDiag() { diag = { fetched: 0, parsed: 0, unparsed: 0, status: 0, loginPage: false, rateLimited: false, serverErr: false, authFail: false }; }
+  // Pure function (no DOM/storage): given a scan's counters, say why 0
+  // results came back. hasPin is passed in so this stays testable in Node.
+  function emptyReason(d, hasPin, minDisc) {
+    if (!hasPin) return { title: 'No delivery pincode set', hint: 'JioMart needs a delivery pincode before it shows prices. Set it on jiomart.com, then scan again.' };
+    if (d.loginPage) return { title: 'You are signed out', hint: 'JioMart returned a login page instead of product data. Sign in on jiomart.com, then scan again.' };
+    if (d.authFail) return { title: 'JioMart refused the request', hint: 'The product API answered 401/403 — the session has expired. Sign in again on jiomart.com; a fresh session usually fixes it.' };
+    if (d.rateLimited) return { title: 'JioMart rate-limited the scan', hint: 'Too many requests in a short time (HTTP 429). Wait a few minutes, then scan again with fewer categories or pages.' };
+    if (d.serverErr) return { title: 'JioMart had a server error', hint: 'The product API answered 5xx. Nothing wrong on your side — try again in a few minutes.' };
+    if (d.fetched && d.parsed === 0) return { title: 'Products came back unreadable', hint: 'JioMart returned ' + d.fetched + ' products but none could be read — the API format may have changed. Check for a newer release.' };
+    if (!d.fetched) return { title: 'These categories returned nothing', hint: 'The API answered but with zero products for the categories picked. Try other categories, or a different delivery pincode.' };
+    return { title: 'Deals found, but none pass your filters', hint: 'Products were fetched, yet none clear the minimum discount (' + (minDisc || 30) + '%) and other filters. Lower the minimum discount in the menu and scan again.' };
+  }
+  // v2: resolved delivery context, cached for one scan. The Vertex product
+  // endpoint routes by store/polygon, so resolving once per scan (not per
+  // page) keeps requests cheap and consistent. Any failure falls back to the
+  // saved pincode location the v1 catalogue endpoint used.
+  let locCtx = null, locCtxAt = 0;
+  async function resolveLocCtx() {
+    if (locCtx && Date.now() - locCtxAt < 10 * 60 * 1000) return locCtx;
+    const pin = pinOf();
+    const base = { pincode: pin, latitude: '', longitude: '', city: '', state: '', country: 'INDIA', storeIds: [], polygonIds: [] };
+    if (!pin) { locCtx = base; locCtxAt = Date.now(); return locCtx; }
+    try {
+      const r = await W.fetch('/api/service/application/logistics/v1.0/pincode/' + encodeURIComponent(pin), { credentials: 'include', headers: { accept: 'application/json' } });
+      if (r.ok) {
+        const j = await r.json(), d = j && j.data && j.data[0];
+        if (d) {
+          const c = (d.lat_long && d.lat_long.coordinates) || [];
+          base.longitude = String(c[0] || ''); base.latitude = String(c[1] || '');
+          for (const par of d.parents || []) { if (par.sub_type === 'city') base.city = par.name; else if (par.sub_type === 'state') base.state = par.name; else if (par.sub_type === 'country') base.country = par.name; }
+        }
+      }
+    } catch (e) { /* fall through with the pincode-only context */ }
+    try {
+      const r = await W.fetch('/api/service/application/logistics/v1.0/delivery-promise', { credentials: 'include', headers: { accept: 'application/json', 'x-currency-code': 'INR', 'x-geolocation': JSON.stringify({ latitude: base.latitude, longitude: base.longitude }), 'x-location-detail': JSON.stringify({ country: base.country, country_iso_code: 'IN', city: base.city, pincode: pin, state: base.state }) } });
+      if (r.ok) {
+        const j = await r.json();
+        base.storeIds = (j.query_params && j.query_params.store_ids) || [];
+        for (const it of j.items || []) for (const jp of it.journey_wise_promise || []) { const pg = jp.meta && jp.meta.polygon_id; if (pg && !base.polygonIds.includes(pg)) base.polygonIds.push(pg); }
+      }
+    } catch (e) { /* store routing is optional */ }
+    locCtx = base; locCtxAt = Date.now(); return locCtx;
+  }
+  const locDetail = ctx => JSON.stringify({ country: ctx.country || 'INDIA', country_iso_code: 'IN', city: ctx.city || '', pincode: ctx.pincode || '', state: ctx.state || '' });
   // JioMart keeps the delivery location in localStorage ("pin") and in a cookie.
   function location0() {
     try { const v = localStorage.getItem('pin'); if (v && /pincode/.test(v)) return v; } catch (e) { /* ignore */ }
@@ -53,43 +114,107 @@
   }
   const pinOf = () => { try { return JSON.parse(location0()).pincode || ''; } catch (e) { return ''; } };
   function normalise(x, cat) {
-    const pr = x.price || {}, sell = price(pr.effective && pr.effective.min), mrp0 = price(pr.marked && pr.marked.min);
+    const pr = x.price || {};
+    // v2: prefer .max (the price the Nov 2026 API shape actually carries);
+    // .min and flat numbers are kept as fallbacks. A missing sell price
+    // still drops the item — but a present price never parses as ₹0 again.
+    const sell = priceField(pr.effective) || priceField(pr.marked) || priceField(x.selling_price) || priceField(x.sale_price);
+    // Strikethrough (MRP) may live under price.marked, price.mrp, or a
+    // top-level field on the item — read every shape before giving up, so
+    // an item is never shown at 0% off just because its MRP moved fields.
+    const mrp0 = priceField(pr.marked) || priceField(pr.mrp) || priceField(x.mrp) || priceField(x.list_price) || priceField(x.strike_price) || priceField(x.original_price) || sell;
     if (!x.name || !sell) return null;
-    const mrp = mrp0 < sell ? sell : mrp0, h = x.hierarchy || {};
-    if (mrp > sell * 20) return null; // 95%+ off is almost always an inflated list price
-    const c = (h.l1_category && h.l1_category.name) || cat, sub = h.l2_category && h.l2_category.name;
-    return { id: String(x.uid || x.item_code || x.slug), title: String(x.name), brand: String((x.brand && x.brand.name) || guessBrand(x.name)), price: sell, mrp,
+    let mrp = mrp0 < sell ? sell : mrp0;
+    // No usable MRP, but the API states a discount: derive the MRP from
+    // sell price + discount instead of showing 0% off (which the minimum
+    // discount filter then hides, so the deal never appears at all).
+    if (mrp <= sell) {
+      let discRaw;
+      for (const k of ['discount', 'discount_pct', 'discount_percent', 'discount_percentage']) if (x[k] != null) { discRaw = x[k]; break; }
+      if (discRaw == null) for (const k of ['discount', 'discount_pct']) if (pr[k] != null) { discRaw = pr[k]; break; }
+      const d = discPctOf(discRaw);
+      if (d > 0 && d < 100) mrp = sell / (1 - d / 100);
+    }
+    const h = x.hierarchy || {};
+    // 2026-11-09: the old guard dropped anything over 95% off (mrp >
+    // sell * 20), so every genuine 96–99% clearance item vanished before
+    // it could render. Only >99% off (mrp > sell * 100) is still treated
+    // as an inflated list price.
+    if (mrp > sell * 100) return null;
+    const cats = Array.isArray(x.categories) ? x.categories.map(c => c && c.name).filter(Boolean) : [];
+    const c = (h.l1_category && h.l1_category.name) || cats[0] || cat, sub = (h.l2_category && h.l2_category.name) || cats[1];
+    // v2 stock check: sellable must be true, and when the API reports
+    // in-stock variants, at least one size must be listed. When the API
+    // omits instock_variants entirely (older catalogue responses), fall
+    // back to sellable alone instead of hiding everything.
+    let inStock = x.sellable !== false;
+    if (x.instock_variants && typeof x.instock_variants === 'object') {
+      const sizes = x.instock_variants.sizes;
+      if (Array.isArray(sizes)) inStock = inStock && sizes.length > 0;
+    }
+    const qty = [x['net-quantity-value'] || x.net_quantity || '', x['net-quantity-unit'] || ''].join(' ').trim();
+    return { id: String(x.uid || x.item_code || x.slug), title: String(x.name) + (qty ? ' · ' + qty : ''), brand: String(brandOf(x) || guessBrand(x.name)), price: sell, mrp,
       disc: mrp > sell ? Math.round((mrp - sell) / mrp * 100) : 0, save: mrp - sell,
-      img: (x.medias && x.medias[0] && x.medias[0].url) || '', url: x.slug ? 'https://www.jiomart.com/product/' + x.slug : '',
-      inStock: x.sellable !== false, cat: sub ? c + ' › ' + sub : c };
+      img: imgOf(x), url: x.slug ? 'https://www.jiomart.com/product/' + x.slug : '',
+      inStock, cat: sub ? c + ' › ' + sub : c };
   }
   async function fetchPage(job, page, ctl) {
     const loc = location0();
     if (!loc) { noLoc = true; return Object.assign([], { more: false }); }
-    const url = '/api/service/application/catalog/v1.0/products/?page_size=40&sort_on=discount_dsc&page_no=' + page + '&f=' + encodeURIComponent('l1_category:' + job.code);
+    const ctx = await resolveLocCtx();
+    const headers = { accept: 'application/json', 'x-currency-code': 'INR', 'x-location-detail': locDetail(ctx) };
+    if (ctx.latitude && ctx.longitude) headers['x-geolocation'] = JSON.stringify({ latitude: ctx.latitude, longitude: ctx.longitude, polygon_ids: ctx.polygonIds });
+    // v2 fetch order: the Vertex product endpoint (server-side discount
+    // sort, store-routed, cursor pagination) first; the older catalogue
+    // endpoint second. Both run in the user's own session (credentials:
+    // include) — no token is embedded anywhere in this file.
+    const fParts = ['department:groceries'];
+    if (ctx.storeIds.length) { fParts.push('journey:quickcommerce'); fParts.push('store_ids:' + ctx.storeIds.slice(0, 10).join('||')); }
+    fParts.push('l1_category:' + job.code);
+    const vertexUrl = '/ext/vertex/application/api/v1.0/products?f=' + encodeURIComponent(fParts.join(':::')) + '&page_size=50&sort_on=discount_dsc&page_no=' + page + '&page_type=number';
+    const legacyUrl = '/api/service/application/catalog/v1.0/products/?page_size=40&sort_on=discount_dsc&page_no=' + page + '&f=' + encodeURIComponent('l1_category:' + job.code);
     let lastErr;
-    for (let a = 0; a < 3; a++) {
+    // v2.1 retry with exponential backoff + jitter (0.7s, 1.4s, 2.8s, 5.6s):
+    // a single 429 or 5xx no longer kills the whole scan.
+    for (let a = 0; a < 4; a++) {
       if (ctl.stop) throw new Error('stopped');
       try {
-        const r = await W.fetch(url, { credentials: 'include', headers: { accept: 'application/json', 'x-location-detail': loc } });
+        let r = await W.fetch(vertexUrl, { credentials: 'include', headers });
+        diag.status = r.status;
+        if (r.status === 401 || r.status === 403) diag.authFail = true;
+        if (r.status === 401 || r.status === 403 || r.status === 404) r = await W.fetch(legacyUrl, { credentials: 'include', headers: { accept: 'application/json', 'x-location-detail': loc } });
         if (r.status === 400) { noLoc = true; return Object.assign([], { more: false }); }
-        if (r.status === 429 || r.status >= 500) throw new Error('HTTP ' + r.status);
+        diag.status = r.status;
+        if (r.status === 429) { diag.rateLimited = true; throw new Error('HTTP 429'); }
+        if (r.status >= 500) { diag.serverErr = true; throw new Error('HTTP ' + r.status); }
         if (!r.ok) return Object.assign([], { more: false });
+        const ct = (r.headers.get('content-type') || '');
+        if (ct.indexOf('json') < 0) { diag.loginPage = true; fetchNote = 'JioMart returned a page instead of data — sign in again on jiomart.com, then scan.'; return Object.assign([], { more: false }); }
         const j = await r.json();
-        const items = (j.items || []).map(x => normalise(x, job.g.name)).filter(Boolean);
-        items.more = !!(j.page && j.page.has_next);
+        const raw = j.items || (j.data && j.data.items) || [];
+        const pg = j.page || (j.data && j.data.page) || {};
+        const items = raw.map(x => normalise(x, job.g.name)).filter(Boolean);
+        diag.fetched += raw.length; diag.parsed += items.length;
+        if (raw.length) diag.unparsed += raw.length - items.length;
+        // Blank-results guard: if the API returned rows but every row was
+        // dropped by the parser, say so instead of showing an empty grid
+        // with no explanation.
+        if (raw.length && !items.length) fetchNote = 'JioMart returned ' + raw.length + ' products but none could be read (price format changed?). Try again later.';
+        items.more = !!(pg.has_next || pg.next_id);
+        if (pg.has_next == null && pg.next_id == null && raw.length >= 40) items.more = true;
         return items;
-      } catch (e) { lastErr = e; await sleep(800 * (a + 1)); }
+      } catch (e) { lastErr = e; await sleep(700 * Math.pow(2, a) + Math.floor(Math.random() * 300)); }
     }
     throw lastErr;
   }
   const P = {
     key: 'jmq_v1', hostRe: /(^|\.)jiomart\.com$/,
-    defaults: { groups: ['cooking-essentials', 'fresh-l1', 'biscuits-drinks-packaged-foods'], depth: 2 },
+    defaults: { groups: ['cooking-essentials', 'fresh-l1', 'biscuits-drinks-packaged-foods'], depth: 3 },
     workers: 3,
     jobs: st => { const jobs = []; for (const g of GROUPS) if (st.groups.includes(g.id)) jobs.push({ g, name: g.name, code: g.id }); return jobs; },
     fetchPage,
     noLocation: () => noLoc,
+    fetchNote: () => fetchNote,
     noLocMsg: 'No products. Set your delivery pincode on jiomart.com, then scan again.',
     locCheck: () => !!pinOf(),
     locUI: () => `<div class="row" style="margin-bottom:6px"><span>Delivering to</span><b>${esc(pinOf() || 'Not set')}</b></div>`,
@@ -114,7 +239,8 @@
 
   // ───────────────────────── State ─────────────────────────
   const S = { products: new Map(), scanning: false, done: 0, total: 0, errors: 0, ctl: { stop: false },
-    q: '', brand: '', cat: '', preset: '', pick: false, tgm: false, favOnly: false, newOnly: false, shown: 60, tab: 'best', panel: false, startedAt: 0 };
+    q: '', brand: '', cat: '', preset: '', pick: false, tgm: false, favOnly: false, newOnly: false, shown: 60, tab: 'best', panel: false, startedAt: 0,
+    pagesDone: 0, pagesTotal: 0, diagText: null, selftest: null };
 
   // ───────────────────────── Scanner ─────────────────────────
   async function scan() {
@@ -124,12 +250,15 @@
     const jobs = P.jobs(store);
     if (!jobs.length) { toast('Pick at least one category'); return; }
     S.scanning = true; S.ctl = { stop: false }; S.done = 0; S.errors = 0; S.total = jobs.length; S.startedAt = Date.now();
+    resetDiag(); S.pagesDone = 0; S.pagesTotal = jobs.length * store.depth; S.diagText = null;
     S.products.clear(); S.shown = 60; render();
     const ctl = S.ctl, queue = jobs.slice();
     const runJob = async job => {
       try {
         for (let page = 1; page <= store.depth && !ctl.stop; page++) {
-          const items = await P.fetchPage(job, page, ctl);
+          let items;
+          try { items = await P.fetchPage(job, page, ctl); }
+          finally { S.pagesDone++; scheduleRender(); }
           const fresh = ingest(items);
           scheduleRender();
           // Stop on the last page, or when a page adds nothing and does not promise more.
@@ -146,7 +275,13 @@
     recordPrices();
     store.lastScan = Date.now(); save(); render();
     notify();
-    if (P.noLocation() && !S.products.size) { toast(P.noLocMsg); return; }
+    if (!S.products.size) {
+      // v2.1: name the cause instead of a generic empty grid.
+      S.diagText = emptyReason(diag, !!pinOf(), store.minDisc); render();
+      toast(S.diagText.title);
+      return;
+    }
+    S.diagText = null;
     toast(ctl.stop ? 'Scan stopped' : `Scan complete · ${S.products.size} products` + (S.errors ? ` · ${S.errors} failed` : ''));
   }
 
@@ -188,6 +323,21 @@
     const ks = Object.keys(h); if (ks.length > 2500) ks.slice(0, ks.length - 2500).forEach(k => delete h[k]);
     const ps = Object.keys(store.prices); if (ps.length > 6000) ps.slice(0, ps.length - 6000).forEach(k => delete store.prices[k]);
   }
+  // v2.1 multi-keyword search: commas split OR groups ("atta, rice" matches
+  // either); words inside one group must all match. Brand is searchable too.
+  function matchQuery(p, q) {
+    const text = (p.title + ' ' + p.cat + ' ' + (p.brand || '')).toLowerCase();
+    const groups = String(q || '').toLowerCase().split(',').map(g => g.trim().split(/\s+/).filter(Boolean)).filter(g => g.length);
+    if (!groups.length) return true;
+    return groups.some(words => words.every(w => text.includes(w)));
+  }
+  // v2.1 de-dupe across pages and categories: one row per product id,
+  // keeping the best discount (then the biggest saving) when it appears twice.
+  function dedupeById(items) {
+    const m = new Map();
+    for (const p of items) { const old = m.get(p.id); if (!old || p.disc > old.disc || (p.disc === old.disc && p.save > old.save)) m.set(p.id, p); }
+    return [...m.values()];
+  }
   const score = p => p.disc + Math.min(30, p.save / 8);
   const SORTS = {
     score: ['Best deal', (a, b) => score(b) - score(a)],
@@ -199,7 +349,6 @@
     name: ['Name A–Z', (a, b) => a.title.localeCompare(b.title)]
   };
   function filtered() {
-    const q = S.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const fav = new Set(store.favs), hid = new Set(store.hidden);
     const out = [];
     S.products.forEach(p => {
@@ -212,7 +361,7 @@
       if ((S.favOnly || S.tab === 'saved') && !fav.has(p.id)) return;
       if (S.newOnly && !p.isNew && !p.was) return;
       if (S.preset && !PRESETS[S.preset][1](p)) return;
-      if (q.length) { const t = (p.title + ' ' + p.cat).toLowerCase(); if (!q.every(w => t.includes(w))) return; }
+      if (S.q.trim() && !matchQuery(p, S.q)) return;
       out.push(p);
     });
     return out.sort(S.preset === 'value' ? SORTS.unit[1] : SORTS[store.sort][1]);
@@ -472,9 +621,9 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
     return `<div class="scrim" data-act="pclose" style="z-index:6"></div><div class="picker" role="dialog" aria-label="Choose what to scan">
  <div class="ph"><div><b>What should Hunter scan?</b><small>${esc(PLATFORM)} · pick one or more categories</small></div><button class="ib soft" data-act="pclose" title="Close">${ic('x')}</button></div>
  <div class="pb"><div class="chips">${GROUPS.map(groupChip).join('')}</div>
-  <div class="row" style="margin-top:12px;justify-content:flex-start;gap:6px"><button class="chip" data-act="all">Select all</button><button class="chip" data-act="none">Clear</button></div>
-  <label class="row" style="margin-top:20px"><span>Pages per category</span><b>${store.depth}</b></label><input type="range" min="1" max="5" value="${store.depth}" data-in="depth">
-  <p class="note" style="margin-top:4px">More pages find more deals but take longer.</p></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-start;gap:6px"><button class="chip" data-act="all">Select all</button><button class="chip" data-act="none">Clear</button><button class="chip" data-act="deep">Deep scan — all ${GROUPS.length} categories, 5 pages</button></div>
+  <label class="row" style="margin-top:20px"><span>Pages per category</span><b>${store.depth}</b></label><input type="range" min="1" max="6" value="${store.depth}" data-in="depth">
+  <p class="note" style="margin-top:4px">More pages find more deals but take longer. Deep scan covers every category, 5 pages each, with categories scanned in parallel.</p></div>
  <div class="pf"><button class="btn ghost" data-act="pclose">Cancel</button><button class="btn" data-act="pstart" ${n ? '' : 'disabled'}>${ic('scan')}Scan ${n} ${n === 1 ? 'category' : 'categories'}</button></div></div>`;
   }
   function openPicker() {
@@ -520,6 +669,8 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   <label class="sw" style="margin-top:10px"><input type="checkbox" data-in="newOnly" ${S.newOnly ? 'checked' : ''}> New or price dropped</label></div>
  <div><h4>${ic('download', 15)}Export</h4><div class="chips"><button class="chip" data-act="csv">${ic('download', 14)}CSV</button><button class="chip" data-act="copyall">${ic('copy', 14)}Copy top 20</button><button class="chip" data-act="unhide">${ic('eyeoff', 14)}Unhide (${store.hidden.length})</button></div>
   <p class="note" style="margin-top:14px"><kbd>/</kbd> search &nbsp;<kbd>S</kbd> scan &nbsp;<kbd>Esc</kbd> close</p></div>
+ <div><h4>${ic('info', 15)}Diagnostics</h4><div class="chips"><button class="chip" data-act="selftest">${ic('check', 14)}Self-test</button></div>
+  <p class="note" style="margin-top:10px">${S.diagText ? esc(S.diagText.title) + ' — ' + esc(S.diagText.hint) : 'Self-test runs the parser on built-in samples, no network needed. Last scan: ' + (store.lastScan ? new Date(store.lastScan).toLocaleString('en-IN') : 'never') + '.'}</p></div>
 </aside>`;
   }
   function spark(p) {
@@ -566,17 +717,25 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
     const cats = new Map();
     for (const p of list) { const c = p.cat.split(' › ')[0]; if (!cats.has(c)) cats.set(c, []); cats.get(c).push(p); }
     const rows = [...cats.entries()].map(([c, ps]) => [c, ps.sort(byDisc)]).sort((x, y) => y[1][0].disc - x[1][0].disc);
+    // v2.1 cross-category best-value row: cheapest rupees per kg / litre
+    // across every category scanned — the baseline only ranks within a
+    // category, so a cheap-per-kg staple in one category never surfaced
+    // against a high-%-off snack in another.
+    const valued = list.filter(p => p.unit).sort((a, b) => unitVal(a) - unitVal(b)).slice(0, 8);
+    const valueRow = valued.length ? `<section class="sec"><div class="sh"><h3>Best value per kg / litre — all categories</h3><span>cheapest unit price, not just biggest % off</span></div>
+  <div class="hs">${valued.map(p => card(p, fav.has(p.id), store.list)).join('')}</div></section>` : '';
     return `<section class="sec"><div class="sh"><h3>Biggest discounts right now</h3><span>${list.length} deals from ${cats.size} categories</span></div>
   <div class="grid">${top.map(p => card(p, fav.has(p.id), store.list)).join('')}</div></section>
+ ${valueRow}
  ${rows.map(([c, ps]) => `<section class="sec"><div class="sh"><h3>${esc(c)}</h3><button class="more" data-act="seeall" data-id="${esc(c)}">See all ${ps.length}${ic('ext', 13)}</button></div>
   <div class="hs">${ps.slice(0, 10).map(p => card(p, fav.has(p.id), store.list)).join('')}</div></section>`).join('')}`;
   }
   function mainView() {
     if (OFFSITE) return `<main id="main">${offsiteCard()}</main>`;
-    if (!S.products.size && !S.scanning) return `<main id="main">${checklist()}</main>`;
+    if (!S.products.size && !S.scanning) return `<main id="main">${S.diagText ? diagCard() : checklist()}</main>`;
     const list = filtered();
     const tabs = [['best', 'Best deals'], ['all', 'All deals'], ['saved', 'Saved' + (store.favs.length ? ' · ' + store.favs.length : '')]];
-    const head = `<div class="tabs">${tabs.map(([k, l]) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${l}</button>`).join('')}${S.scanning ? `<span class="live">${ic('scan', 14)}Scanning ${S.done}/${S.total}</span>` : ''}</div>`;
+    const head = `<div class="tabs">${tabs.map(([k, l]) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${l}</button>`).join('')}${S.scanning ? `<span class="live">${ic('scan', 14)}Scanning ${S.done}/${S.total} · ${S.pagesDone}/${S.pagesTotal} pages</span>` : ''}</div>`;
     let body;
     if (S.tab === 'best') {
       body = bestView(list) || `<div class="empty"><span class="ei">${ic(S.scanning ? 'scan' : 'tag', 26)}</span><b>${S.scanning ? 'Finding the best deals…' : 'No deals at this discount'}</b>${S.scanning ? 'They appear here as each category comes in.' : 'Lower the minimum discount in the menu.'}</div>`;
@@ -612,13 +771,13 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
     app.className = 'app' + (dark ? ' dark' : '');
     app.innerHTML = `<header><button class="ib menu-btn" data-act="side" title="Menu">${ic('menu')}</button>
  <div class="logo"><span class="mk">${ic('arrowdown', 20)}</span><div><b>PriceDrop Hunter</b><small><i class="plat">${esc(PLATFORM)}</i>${OFFSITE ? '<span class="flag">Not on store</span>' : ''}</small></div></div>
- <label class="search">${ic('search', 17)}<input data-in="q" placeholder="Search products or brands" value="${esc(S.q)}"><kbd>/</kbd></label><span class="sp"></span>
+ <label class="search">${ic('search', 17)}<input data-in="q" placeholder="Search products or brands — comma means or (atta, rice)" value="${esc(S.q)}"><kbd>/</kbd></label><span class="sp"></span>
  ${capture ? '' : S.scanning ? `<button class="sb stop" data-act="stop">${ic('stop', 16)}<span class="lb">Stop</span></button>` : `<button class="sb" data-act="scan">${ic('scan', 16)}<span class="lb">Scan</span></button>`}
  <button class="hb tgb" data-act="tgopen" title="Telegram alerts">${ic('send', 16)}<span class="lb">Telegram</span><span class="dot ${store.tg.on && tgReady() ? 'on' : ''}"></span></button>
  <button class="ib" data-act="theme" title="${dark ? 'Light' : 'Dark'} mode">${ic(dark ? 'sun' : 'moon')}</button>
  <button class="hb" data-act="panel" title="Shopping list">${ic('bag')}<span class="lb">List</span>${count ? `<span class="n">${count}</span>` : ''}</button>
  <button class="ib" data-act="close" title="Close (Esc)">${ic('x')}</button>${S.scanning ? `<div class="prog" style="width:${pct}%"></div>` : ''}</header>
- <div class="body">${sideOpen ? '<div class="scrim side" data-act="side"></div>' : ''}${sidebar()}${mainView()}</div>${S.panel ? '<div class="scrim" data-act="closepanel"></div>' : ''}${drawer()}${S.pick ? pickerUI() : ''}${S.tgm ? tgModal() : ''}<div class="toast" id="toast"></div>`;
+ <div class="body">${sideOpen ? '<div class="scrim side" data-act="side"></div>' : ''}${sidebar()}${mainView()}</div>${S.panel ? '<div class="scrim" data-act="closepanel"></div>' : ''}${drawer()}${S.pick ? pickerUI() : ''}${S.tgm ? tgModal() : ''}${S.selftest ? selftestUI() : ''}<div class="toast" id="toast"></div>`;
     const m = root.getElementById('main'); if (m) m.scrollTop = keepScroll;
     const a = root.querySelector('aside'); if (a) a.scrollTop = sideScroll;
     if (focused === 'q') { const i = root.querySelector('[data-in=q]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
@@ -641,7 +800,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   // Add products from any source (scan, passive capture) with price-history flags.
   function ingest(items) {
     let fresh = 0;
-    for (const p of items) {
+    for (const p of dedupeById(items)) {
       if (!allowed(p) || S.products.has(p.id)) continue;
       const prev = store.prices[p.id];
       p.isNew = prev == null; p.was = prev != null && prev > p.price ? prev : 0;
@@ -654,6 +813,56 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
       S.products.set(p.id, p); fresh++;
     }
     return fresh;
+  }
+
+  // ───────────────────────── Self-test ─────────────────────────
+  // v2.1 built-in self-test: the real parser (normalise + unitOf) run
+  // in-browser on bundled samples — no network, no scan needed. It catches
+  // the blank-results bug class (a price shape the parser misreads) before
+  // the user wastes a scan on it. Same cases as test/power-features.test.js.
+  const SELFTEST_FIXTURE = [
+    { uid: 'ST1', name: 'Atta 5 kg', brand: { name: 'Test' }, slug: 'atta-5-kg', price: { effective: { max: 189 }, marked: { max: 420 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Cooking Essentials' } } },
+    { uid: 'ST2', name: 'Almonds 500g', brand: { name: 'Test' }, slug: 'almonds-500g', price: { effective: { min: 349 }, marked: { min: 699 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Cooking Essentials' } } },
+    { uid: 'ST3', name: 'Oats 1 kg', brand: { name: 'Test' }, slug: 'oats-1-kg', price: { effective: 149, marked: 220 }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Cooking Essentials' } } },
+    { uid: 'ST4', name: 'Miracle Balm 10g', brand: { name: 'Test' }, slug: 'miracle-balm-10g', price: { effective: { max: 5 }, marked: { max: 999 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Beauty' } } },
+    { uid: 'ST5', name: 'No Price Item', brand: { name: 'Test' }, slug: 'no-price-item', price: { effective: { max: 0 }, marked: { max: 0 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Beauty' } } },
+    { uid: 'ST6', name: 'Clearance Soap 4 pc', brand: { name: 'Test' }, slug: 'clearance-soap-4-pc', price: { effective: { max: 40 }, marked: { max: 1000 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Personal Care' } } },
+    { uid: 'ST7', name: 'No-MRP Shampoo 340 ml', brand: { name: 'Test' }, slug: 'no-mrp-shampoo-340-ml', discount: '90%', price: { effective: { max: 100 } }, sellable: true, medias: [{ url: 'https://www.jiomart.com/images/x.jpg' }], hierarchy: { l1_category: { name: 'Personal Care' } } }
+  ];
+  function runSelfTest() {
+    const p1 = normalise(SELFTEST_FIXTURE[0], 'Cooking Essentials');
+    const p2 = normalise(SELFTEST_FIXTURE[1], 'Cooking Essentials');
+    const p3 = normalise(SELFTEST_FIXTURE[2], 'Cooking Essentials');
+    const p4 = normalise(SELFTEST_FIXTURE[3], 'Beauty');
+    const p5 = normalise(SELFTEST_FIXTURE[4], 'Beauty');
+    const p6 = normalise(SELFTEST_FIXTURE[5], 'Personal Care');
+    const p7 = normalise(SELFTEST_FIXTURE[6], 'Personal Care');
+    const u1 = p1 && unitOf(p1.title);
+    const cases = [
+      { name: 'Max-only price reads (₹189, 55% off)', ok: !!p1 && p1.price === 189 && p1.disc === 55, detail: 'Expected price 189 and 55% off.' },
+      { name: 'Min-only (legacy) price reads (₹349)', ok: !!p2 && p2.price === 349, detail: 'Expected price 349 from a min-only payload.' },
+      { name: 'Flat-number price reads (₹149)', ok: !!p3 && p3.price === 149, detail: 'Expected price 149 from a flat-number payload.' },
+      { name: 'Inflated MRP rejected (₹5 vs ₹999)', ok: p4 === null, detail: 'A 99%+ "discount" is an inflated list price and must be dropped.' },
+      { name: 'No-price item rejected', ok: p5 === null, detail: 'An item with no price must not render as a ₹0 card.' },
+      { name: '96% off parses (₹40 vs ₹1,000)', ok: !!p6 && p6.price === 40 && p6.disc === 96, detail: 'Expected a genuine 96% clearance item to parse at 96% off, not be dropped as an inflated MRP.' },
+      { name: 'No-MRP item with an explicit 90% discount parses', ok: !!p7 && p7.price === 100 && p7.disc === 90, detail: 'Expected the discount field to supply the MRP when no marked price is carried.' },
+      { name: 'Unit price parses (Atta 5 kg → ₹37.8/kg)', ok: !!u1 && u1.base === 'kg' && u1.qty === 5, detail: 'Expected 5 kg so the value sort can rank it.' }
+    ];
+    return cases;
+  }
+  function selftestUI() {
+    const res = S.selftest || [];
+    const passed = res.filter(r => r.ok).length;
+    return `<div class="scrim" data-act="stclose" style="z-index:6"></div><div class="picker" role="dialog" aria-label="Self-test">
+ <div class="ph"><div><b>Self-test</b><small>${passed} of ${res.length} checks passed · parser only, no network</small></div><button class="ib soft" data-act="stclose" title="Close">${ic('x')}</button></div>
+ <div class="pb">${res.map(r => `<div class="ck ${r.ok ? 'ok' : 'no'}"><span>${ic(r.ok ? 'check' : 'x', 15)}</span><div><b>${esc(r.name)}</b>${r.ok ? '' : `<p>${esc(r.detail || 'Check failed.')}</p>`}</div></div>`).join('')}</div>
+ <div class="pf"><button class="btn" data-act="stclose">Done</button></div></div>`;
+  }
+  function diagCard() {
+    const d = S.diagText;
+    return `<div class="check"><h3>${esc(d.title)}</h3><p class="note" style="font-size:14px">${esc(d.hint)}</p>
+ <p class="note" style="font-size:14px;margin-top:8px">Not sure the tool itself is working? Run the <b>self-test</b> — it checks the parser on built-in samples without any network.</p>
+ <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap"><button class="btn" style="flex:1" data-act="scan">${ic('scan')}Scan again</button><button class="btn ghost" data-act="selftest">${ic('check', 16)}Self-test</button></div></div>`;
   }
 
   // ───────────────────────── Telegram alerts ─────────────────────────
@@ -742,6 +951,9 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
       case 'grp': store.groups = store.groups.includes(id) ? store.groups.filter(x => x !== id) : store.groups.concat(id); save(); render(); break;
       case 'all': store.groups = GROUPS.map(g => g.id); save(); render(); break;
       case 'none': store.groups = []; save(); render(); break;
+      case 'deep': store.groups = GROUPS.map(g => g.id); store.depth = 5; save(); S.pick = false; render(); scan(); break;
+      case 'selftest': S.selftest = runSelfTest(); render(); break;
+      case 'stclose': S.selftest = null; render(); break;
       case 'scan': openPicker(); break;
       case 'pstart': if (!store.groups.length) { toast('Pick at least one category'); break; } S.pick = false; render(); scan(); break;
       case 'pclose': S.pick = false; render(); break;
@@ -778,7 +990,7 @@ kbd{border:1px solid var(--bd);border-radius:5px;padding:0 5px;font-size:11px;fo
   document.addEventListener('keydown', e => {
     if (host.style.display === 'none') return;
     const typing = root.activeElement && /INPUT|SELECT/.test(root.activeElement.tagName);
-    if (e.key === 'Escape' && (S.pick || S.tgm)) { S.pick = false; S.tgm = false; render(); }
+    if (e.key === 'Escape' && (S.pick || S.tgm || S.selftest)) { S.pick = false; S.tgm = false; S.selftest = null; render(); }
     else if (e.key === 'Escape') { if (S.panel) { S.panel = false; render(); } else if (typing) root.activeElement.blur(); else api.hide(); }
     else if (!typing && !e.metaKey && !e.ctrlKey) {
       if (e.key === '/') { e.preventDefault(); const i = root.querySelector('[data-in=q]'); i && i.focus(); }

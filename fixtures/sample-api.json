@@ -1,0 +1,564 @@
+{
+  "page": {
+    "has_next": false,
+    "item_total": 12
+  },
+  "items": [
+    {
+      "uid": "JM001",
+      "name": "Chakki Atta 5 kg",
+      "brand": {
+        "name": "Aashirvaad"
+      },
+      "slug": "chakki-atta-5-kg",
+      "price": {
+        "effective": {
+          "max": 189,
+          "min": 189
+        },
+        "marked": {
+          "max": 420,
+          "min": 420
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/chakki-atta-5-kg.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Cooking Essentials"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Cooking Essentials"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM002",
+      "name": "Classic Chips 150g",
+      "brand": {
+        "name": "Lays"
+      },
+      "slug": "classic-chips-150g",
+      "price": {
+        "effective": {
+          "max": 45,
+          "min": 45
+        },
+        "marked": {
+          "max": 120,
+          "min": 120
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/classic-chips-150g.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Biscuits, Drinks & Packaged Foods"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Biscuits, Drinks & Packaged Foods"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM003",
+      "name": "Toned Milk 1 L",
+      "brand": {
+        "name": "Amul"
+      },
+      "slug": "toned-milk-1-l",
+      "price": {
+        "effective": {
+          "max": 54,
+          "min": 54
+        },
+        "marked": {
+          "max": 78,
+          "min": 78
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/toned-milk-1-l.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Fresh"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Fresh"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM004",
+      "name": "Herbal Shampoo 340 ml",
+      "brand": {
+        "name": "Dove"
+      },
+      "slug": "herbal-shampoo-340-ml",
+      "price": {
+        "effective": {
+          "max": 139,
+          "min": 139
+        },
+        "marked": {
+          "max": 330,
+          "min": 330
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/herbal-shampoo-340-ml.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Personal Care"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Personal Care"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM005",
+      "name": "Basmati Rice 1 kg",
+      "brand": {
+        "name": "India Gate"
+      },
+      "slug": "basmati-rice-1-kg",
+      "price": {
+        "effective": {
+          "max": 99,
+          "min": 99
+        },
+        "marked": {
+          "max": 199,
+          "min": 199
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/basmati-rice-1-kg.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Cooking Essentials"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Cooking Essentials"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM006",
+      "name": "Toor Dal 1 kg",
+      "brand": {
+        "name": "Tata Sampann"
+      },
+      "slug": "toor-dal-1-kg",
+      "price": {
+        "effective": {
+          "max": 129,
+          "min": 129
+        },
+        "marked": {
+          "max": 210,
+          "min": 210
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/toor-dal-1-kg.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Cooking Essentials"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Cooking Essentials"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM007",
+      "name": "Green Tea 100g",
+      "brand": {
+        "name": "Lipton"
+      },
+      "slug": "green-tea-100g",
+      "price": {
+        "effective": {
+          "max": 89,
+          "min": 89
+        },
+        "marked": {
+          "max": 150,
+          "min": 150
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/green-tea-100g.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Biscuits, Drinks & Packaged Foods"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Biscuits, Drinks & Packaged Foods"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM008",
+      "name": "Almonds 500g",
+      "brand": {
+        "name": "Happilo"
+      },
+      "slug": "almonds-500g",
+      "price": {
+        "effective": {
+          "min": 349
+        },
+        "marked": {
+          "min": 699
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/almonds-500g.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Cooking Essentials"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Cooking Essentials"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM009",
+      "name": "Oats 1 kg",
+      "brand": {
+        "name": "Quaker"
+      },
+      "slug": "oats-1-kg",
+      "price": {
+        "effective": 149,
+        "marked": 220
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/oats-1-kg.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Cooking Essentials"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Cooking Essentials"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM010",
+      "name": "Honey 500g",
+      "brand": {
+        "name": "Dabur"
+      },
+      "slug": "honey-500g",
+      "price": {
+        "effective": {
+          "max": 179,
+          "min": 179
+        },
+        "marked": {
+          "max": 299,
+          "min": 299
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/honey-500g.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Cooking Essentials"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Cooking Essentials"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM011",
+      "name": "Miracle Balm 10g",
+      "brand": {
+        "name": "Unknown"
+      },
+      "slug": "miracle-balm-10g",
+      "price": {
+        "effective": {
+          "max": 5,
+          "min": 5
+        },
+        "marked": {
+          "max": 999,
+          "min": 999
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/miracle-balm-10g.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Beauty"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Beauty"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    },
+    {
+      "uid": "JM012",
+      "name": "No Price Item",
+      "brand": {
+        "name": "Unknown"
+      },
+      "slug": "no-price-item",
+      "price": {
+        "effective": {
+          "max": 0,
+          "min": 0
+        },
+        "marked": {
+          "max": 0,
+          "min": 0
+        }
+      },
+      "sellable": true,
+      "instock_variants": {
+        "sizes": [
+          "1"
+        ]
+      },
+      "medias": [
+        {
+          "url": "https://www.jiomart.com/images/no-price-item.jpg"
+        }
+      ],
+      "hierarchy": {
+        "l1_category": {
+          "name": "Beauty"
+        },
+        "l2_category": {
+          "name": "Atta & Flours"
+        }
+      },
+      "categories": [
+        {
+          "name": "Beauty"
+        },
+        {
+          "name": "Atta & Flours"
+        }
+      ],
+      "net-quantity-value": "5",
+      "net-quantity-unit": "kg"
+    }
+  ]
+}

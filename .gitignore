@@ -1,2 +1,6 @@
 .DS_Store
 node_modules/
+.env
+bot-v2/*.db
+bot-v2/__pycache__/
+bot-v2/data/
