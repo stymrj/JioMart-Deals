@@ -80,7 +80,8 @@ def write_export(products, fmt, outdir):
 
 
 def scan_once(pincodes, min_discount, limit, dry_run=False, categories=None,
-              max_pages=3, export_fmt=None, export_dir="exports"):
+              max_pages=3, export_fmt=None, export_dir="exports",
+              json_mode=False):
     """One full scan across one or more pincodes. Prices differ by dark
     store, so each pincode is scanned and diffed on its own history;
     products are tagged with their pincode. Returns deals sent (0 dry-run)."""
@@ -103,6 +104,11 @@ def scan_once(pincodes, min_discount, limit, dry_run=False, categories=None,
             print(f"[{pin}][{cat}] {len(res['products'])} deals")
             time.sleep(1)
         fetcher.close()
+        if json_mode:
+            # Feed snapshot: keep every fetched product, skip the differ
+            # (no alertable-only filtering, no DB history) and skip Telegram.
+            all_products.extend(pin_products)
+            continue
         alertable, stale = analyze_deals(pin_products, pin)
         alertable.sort(key=lambda p: (-p["discount_pct"], -p["savings"]))
         print(f"[{pin}] {len(alertable)} alertable deals out of {len(pin_products)} fetched")
@@ -123,6 +129,25 @@ def scan_once(pincodes, min_discount, limit, dry_run=False, categories=None,
             total_sent += len(alertable)
         except Exception as exc:
             print(f"[{pin}] Telegram send failed: {exc}")
+    if json_mode:
+        # One JSON object, single line, printed LAST so the workflow can
+        # extract it with `tail -n 1` (per-category log lines stay on stdout).
+        # Multi-pincode runs dedupe by uid, keeping the lowest price.
+        seen = {}
+        for p in all_products:
+            if p["discount_pct"] < min_discount or not p.get("in_stock", True):
+                continue
+            old = seen.get(p["uid"])
+            if old is None or p["effective_price"] < old["effective_price"]:
+                seen[p["uid"]] = p
+        top = sorted(seen.values(), key=lambda p: (-p["discount_pct"], -p["savings"]))[:20]
+        out = {"store": "JioMart",
+               "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+               "deals": [{"title": p["name"], "price": p["effective_price"], "mrp": p["mrp"],
+                          "disc": round(p["discount_pct"]), "url": p.get("url", ""),
+                          "cat": (p.get("categories") or [""])[0]} for p in top]}
+        print(json.dumps(out, ensure_ascii=False))
+        return 0
     if export_fmt:
         write_export(all_products, export_fmt, export_dir)
     print(f"{total_sent} alertable deals sent across {len(pincodes)} pincode(s), "
@@ -175,6 +200,7 @@ def main():
     ap.add_argument("--daemon", action="store_true", help="scan every --interval-minutes")
     ap.add_argument("--interval-minutes", type=int, default=60)
     ap.add_argument("--dry-run", action="store_true", help="fetch and diff, do not send Telegram")
+    ap.add_argument("--json", action="store_true", help="print top deals as one JSON object {store, generatedAt, deals} and exit: no Telegram, no DB/dedupe writes")
     args = ap.parse_args()
 
     load_env(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -205,7 +231,7 @@ def main():
         scan_once(pincodes, args.min_discount, args.limit,
                   dry_run=args.dry_run, categories=args.category,
                   max_pages=args.max_pages, export_fmt=args.export,
-                  export_dir=args.export_dir)
+                  export_dir=args.export_dir, json_mode=args.json)
     gc.collect()
 
 
