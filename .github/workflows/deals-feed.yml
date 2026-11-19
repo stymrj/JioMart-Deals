@@ -1,0 +1,67 @@
+# Publish daily deals feed — JioMart
+#
+# Once a day at 03:00 UTC (08:30 IST): runs the scanner in --json mode
+# (same scan, no Telegram, no bot state) and publishes deals.json to the
+# `feed` branch, where the Telegram subscription bot reads it from
+#   https://raw.githubusercontent.com/stymrj/JioMart-Deals/feed/deals.json
+# The subscriber bot fetches at ~08:45 IST and sends the digest at 09:00 IST.
+# Separate from telegram-bot.yml, so the alert loop is untouched.
+# The `feed` branch is force-pushed daily; do not commit anything else to it.
+
+name: Publish daily deals feed
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC = 08:30 IST
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to push the feed branch
+
+concurrency:
+  group: deals-feed
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    # Same gate as telegram-bot.yml: set the repository variable
+    # BOT_ENABLED to "true" to let scheduled runs start.
+    if: github.event_name == 'workflow_dispatch' || vars.BOT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      JIOMART_BEARER: ${{ secrets.JIOMART_BEARER }}
+      JIOMART_PINCODE: ${{ vars.JIOMART_PINCODE || '560045' }}
+      JIOMART_PINCODES: ${{ vars.JIOMART_PINCODES }}
+      MIN_DISCOUNT: ${{ vars.MIN_DISCOUNT || '50' }}
+      DEAL_LIMIT: ${{ vars.DEAL_LIMIT || '20' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r bot-v2/requirements.txt
+
+      - name: Scan and emit feed JSON
+        run: python bot-v2/bot.py --once --json | tail -n 1 > deals.json
+
+      - name: Validate deals.json
+        run: python -m json.tool deals.json > /dev/null
+
+      - name: Publish to feed branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B feed
+          git add deals.json
+          if git diff --cached --quiet; then
+            echo "feed unchanged"
+          else
+            git commit -m "feed: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin feed --force
+          fi
