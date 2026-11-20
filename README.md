@@ -11,7 +11,7 @@ Scans the JioMart categories you pick, sorted by discount, and shows the biggest
 The v2 port fixed the fetch layer; v2.1 goes further than the baseline in ways the other store tools do not have yet:
 
 - **It tells you why 0 results happened.** A scan that finds nothing now names the cause — no pincode set, signed out, rate-limited (HTTP 429), JioMart server error, an empty category, products that came back unreadable, or deals that exist but are all filtered out by your minimum discount — with what to do about each. The baseline only showed an empty grid.
-- **Built-in self-test.** A **Self-test** button in the menu runs the real parser on bundled samples (max-only, min-only and flat prices; inflated-MRP and no-price rejects; unit-price parsing) with no network, so you can check the tool itself before spending a scan.
+- **Built-in self-test.** A **Self-test** button in the menu runs the real parser on bundled samples (max-only, min-only and flat prices; inflated-MRP and no-price rejects; a 96%-off clearance item; a no-MRP item with an explicit 90% discount; unit-price parsing) with no network, so you can check the tool itself before spending a scan.
 - **Retries with exponential backoff.** A 429 or 5xx no longer kills the scan: each page retries up to 4 times (0.7s, 1.4s, 2.8s, 5.6s + jitter).
 - **Deeper scans, with progress.** Default depth is 3 pages per category (up from 2), up to 6 pages, plus a one-tap **Deep scan** (all 20 categories, 5 pages each, scanned in parallel) with a live per-page progress readout. Results are de-duplicated across pages and categories, keeping the best discount per product.
 - **Cross-category best-value row.** Beside the biggest-%-off grid, a "Best value per kg / litre" row ranks the cheapest unit price across every category scanned — a cheap staple no longer loses to a high-%-off snack.
@@ -26,14 +26,14 @@ The v2 port fixed the fetch layer; v2.1 goes further than the baseline in ways t
 - Ranks by percent off and rupees saved together
 - Labels products that are new, cheaper than last time, or at their lowest price ever
 - Price history sparkline on every product you have seen before
-- Saved items strip showing how much each one dropped since you saved it
+- Saved items tab, with a price-history sparkline on every saved deal
 - Unit price (per kg, litre or piece) with a value sort
 - One-tap presets: under ₹99, 50% off, save ₹100+, price drops, lowest ever, best value
 - A setup checklist on first open
 - Filters: search, category, brand, maximum price, minimum discount, stock, saved items
 - Shopping list with quantities, total and total savings
 - CSV export and copy-to-share text
-- Grid and list views, light and dark themes, keyboard shortcuts
+- Grid view, light and dark themes, keyboard shortcuts
 - Settings, saved items and price history stay in your browser
 
 ## What changed in v2
@@ -55,15 +55,11 @@ Open Hunter, press **Self-test** in the menu. It runs the real parser on bundled
 
 **Bookmarklet (desktop).** Run `node build.js`, open `index.html`, and drag the **JioMart Deals** button to your bookmarks bar. Open jiomart.com and click the bookmark.
 
-**Bookmarklet (mobile).** On the install page, tap **Copy mobile loader**. It is a bookmark of about 380 characters that loads the latest version from GitHub Pages, so it fits on any phone. Create a bookmark named **JioMart Deals**, paste it as the address, and run it from the address bar on jiomart.com. The full bookmarklet (about 45 KB, no network needed) is in `dist/bookmarklet.txt`.
+**Bookmarklet (mobile).** On the install page, tap **Copy mobile loader**. It is a bookmark of about 380 characters that loads the latest version from GitHub Pages, so it fits on any phone. Create a bookmark named **JioMart Deals**, paste it as the address, and run it from the address bar on jiomart.com. The full bookmarklet (about 66 KB, no network needed) is in `dist/bookmarklet.txt`.
 
 **Userscript.** Install `dist/jiomart-deals.user.js` in Tampermonkey or Violentmonkey. A small Deals button appears on every jiomart.com page.
 
-**jsDelivr loader (bookmarklet):**
-
-```javascript
-javascript:(function(){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/gh/stymrj/JioMart-Deals@v2/dist/deals.js?t='+Date.now();document.body.appendChild(s);})()
-```
+There is no jsDelivr loader for this repo: jsDelivr reads `@v2` in a `gh` URL as a version range, not a branch name, so `…/JioMart-Deals@v2/dist/deals.js` answers 404 (only a full commit hash works, and that pins a stale build). The mobile loader above — which fetches the latest build from GitHub Pages — is the CDN route.
 
 ## Use
 
@@ -108,6 +104,16 @@ Notes:
 - Multi-pincode: pass `--pincode` more than once, or set `JIOMART_PINCODES=560045,110001` in `.env`. Each pincode is scanned and diffed against its own price history, since prices differ by dark store.
 - Export: `--export csv` (or `json`) writes every fetched product to `exports/jiomart-deals-<stamp>.csv|json` with pincode, price, MRP, discount, saving, stock and diff type (`new`, `price_drop`, `restocked`, `discount_up`, `weekly`, `stale`) — the same columns feed the PriceDrop-Hunter compare page.
 
+### GitHub Actions (alerts around the clock, no machine needed)
+
+`.github/workflows/telegram-bot.yml` runs the same bot on GitHub Actions, free: **hourly at :15 past the hour, 08:45–23:45 IST** (`15 3-18 * * *` UTC — GitHub cron is UTC, IST is UTC+5:30). It scans the 11 categories in `bot.py` (up to 3 pages each) at the default 50% minimum discount.
+
+1. In the repo, go to **Settings → Secrets and variables → Actions** and add:
+   - Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (both required). Optional: `JIOMART_BEARER` — only if JioMart answers 401/403; it expires when your browser session does, so refresh it when alerts stop.
+   - Variables: `BOT_ENABLED` = `true` — the schedule does nothing until this is set. Optional: `JIOMART_PINCODE` (default `560045`), `JIOMART_PINCODES` (comma-separated; when set, it wins over `JIOMART_PINCODE`), `MIN_DISCOUNT` (default `50`), `DEAL_LIMIT` (default `20`).
+2. Test it first: **Actions → Telegram deal alerts → Run workflow**, tick **dry_run**, and read the log — it prints the messages it would have sent and sends nothing. A run that fetches zero products, or whose Telegram send fails, exits non-zero so a broken run never looks green.
+3. The bot's SQLite history (`bot-v2/jiomart_bot.db`) is cached between runs, so dedupe and the 7-day cooldown survive from one run to the next. Never commit the `.db` file — it is gitignored.
+
 ## How it gets data
 
 Uses JioMart's product API (the same one the site calls) with the delivery pincode JioMart saved for you, sorted by discount, 50 products per page on the Vertex endpoint (40 on the catalogue fallback). The pincode is resolved to coordinates and serving stores first, so results match your delivery address.
@@ -119,6 +125,10 @@ Uses JioMart's product API (the same one the site calls) with the delivery pinco
 - **Login / location errors.** The scan needs the `pin` value JioMart saves in your browser. Clear it by re-setting the pincode on the site; private/incognito windows start without one.
 - **Telegram test fails.** Install the userscript — the plain bookmarklet is blocked from calling Telegram on some pages. Check the token and chat ID, and that you pressed **Start** in your bot.
 - **Deals differ from a friend's.** Prices and stock depend on the dark store near your delivery address, so everyone sees their own local deals.
+- **Scheduled bot run does nothing.** The GitHub Actions schedule only runs after you set the repository variable `BOT_ENABLED` to `true`. Manual runs from the Actions tab always run.
+- **Bot run fails: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set".** Add both as repo secrets (Settings → Secrets and variables → Actions). A dry run (`--dry-run`, or the workflow's `dry_run` input) skips sending, so it passes without them.
+- **Bot run fails: "scan fetched 0 products".** JioMart's API was unreachable, or the pincode is wrong, or the session bearer expired. Check the log for per-category fetch errors; if you see 401/403, set the `JIOMART_BEARER` secret from a fresh browser session.
+- **Bot alerts stopped.** The `JIOMART_BEARER` secret expires when your browser session does — copy a fresh `Authorization` header from DevTools into the secret. Also check the workflow run log: a failed run exits non-zero and says why.
 
 ## Testing
 

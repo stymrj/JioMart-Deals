@@ -11,6 +11,12 @@ fetched product to CSV/JSON.
     python bot.py --once --pincode 560045 --pincode 110001 --export csv
     python bot.py --daemon --interval-minutes 60
 
+Exit code: --once exits non-zero when the scan fetched nothing at all or
+a Telegram send failed, so a scheduled run fails loudly instead of
+silently alerting nothing. A quiet run (products fetched, nothing
+alertable) still exits 0. --daemon keeps the old behaviour: it logs the
+failure and carries on with the next slot.
+
 Resource discipline: a single shared requests session (see fetcher),
 database connections that always close (see database), a single-thread
 HTTP health server (only when $PORT is set, for hosted runs), and
@@ -39,8 +45,8 @@ CATEGORIES = [
     "mobiles-tablets", "kitchen-appliances", "home-appliances",
 ]
 
-DEFAULT_MIN_DISCOUNT = float(os.environ.get("MIN_DISCOUNT", "50"))
-DEFAULT_LIMIT = int(os.environ.get("DEAL_LIMIT", "20"))
+DEFAULT_MIN_DISCOUNT = float(os.environ.get("MIN_DISCOUNT", "50") or "50")
+DEFAULT_LIMIT = int(os.environ.get("DEAL_LIMIT", "20") or "20")
 
 
 def load_env(path=".env"):
@@ -81,12 +87,16 @@ def write_export(products, fmt, outdir):
 
 def scan_once(pincodes, min_discount, limit, dry_run=False, categories=None,
               max_pages=3, export_fmt=None, export_dir="exports",
-              json_mode=False):
+              json_mode=False, strict=False):
     """One full scan across one or more pincodes. Prices differ by dark
     store, so each pincode is scanned and diffed on its own history;
-    products are tagged with their pincode. Returns deals sent (0 dry-run)."""
+    products are tagged with their pincode. Returns deals sent (0 dry-run).
+    With strict=True (the --once path), raises RuntimeError when the scan
+    fetched nothing at all or a Telegram send failed, so the process exits
+    non-zero instead of silently reporting a quiet run."""
     init_db()
     all_products, total_sent = [], 0
+    fetched_total, send_failed = 0, 0
     for pin in pincodes:
         fetcher = Fetcher(pin)
         pin_products, seen = [], set()
@@ -97,6 +107,7 @@ def scan_once(pincodes, min_discount, limit, dry_run=False, categories=None,
             except Exception as exc:
                 print(f"[{pin}][{cat}] fetch failed: {exc}")
                 continue
+            fetched_total += len(res["products"])
             for p in res["products"]:
                 if p["uid"] not in seen:
                     seen.add(p["uid"])
@@ -129,6 +140,7 @@ def scan_once(pincodes, min_discount, limit, dry_run=False, categories=None,
             total_sent += len(alertable)
         except Exception as exc:
             print(f"[{pin}] Telegram send failed: {exc}")
+            send_failed += 1
     if json_mode:
         # One JSON object, single line, printed LAST so the workflow can
         # extract it with `tail -n 1` (per-category log lines stay on stdout).
@@ -152,6 +164,12 @@ def scan_once(pincodes, min_discount, limit, dry_run=False, categories=None,
         write_export(all_products, export_fmt, export_dir)
     print(f"{total_sent} alertable deals sent across {len(pincodes)} pincode(s), "
           f"{len(all_products)} products fetched in total")
+    if strict and fetched_total == 0:
+        raise RuntimeError("scan fetched 0 products across all pincodes/categories — "
+                           "JioMart API unreachable, or the pincode / JIOMART_BEARER is wrong")
+    if strict and send_failed:
+        raise RuntimeError(f"Telegram send failed for {send_failed} pincode(s) — "
+                           "check TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID")
     return total_sent
 
 
@@ -214,7 +232,7 @@ def main():
         multi = os.environ.get("JIOMART_PINCODES", "").strip()
         pincodes = [p.strip() for p in multi.split(",") if p.strip()] or None
     if not pincodes:
-        pincodes = [os.environ.get("JIOMART_PINCODE", "560045")]
+        pincodes = [os.environ.get("JIOMART_PINCODE", "560045") or "560045"]
 
     if args.daemon:
         print(f"Bot running every {args.interval_minutes} min (PINs {', '.join(pincodes)}, min {args.min_discount}% off)")
@@ -228,10 +246,14 @@ def main():
                 record_slot_execution(slot, deals_sent=n)
             time.sleep(args.interval_minutes * 60)
     else:
+        # --once: fail loudly (non-zero exit) when nothing was fetched or
+        # a Telegram send failed, so a scheduled run never looks green
+        # while alerting nothing. A quiet run (fetched, nothing alertable)
+        # still exits 0.
         scan_once(pincodes, args.min_discount, args.limit,
                   dry_run=args.dry_run, categories=args.category,
                   max_pages=args.max_pages, export_fmt=args.export,
-                  export_dir=args.export_dir, json_mode=args.json)
+                  export_dir=args.export_dir, json_mode=args.json, strict=True)
     gc.collect()
 
 
