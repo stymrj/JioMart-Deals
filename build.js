@@ -1,7 +1,7 @@
 // Builds dist/ (bookmarklet, mobile loader, userscript) and index.html (from src/index.tpl.html).
 // Usage: node build.js   (uses terser if available via npx, else ships unminified)
 const fs = require('fs'), path = require('path'), { execSync } = require('child_process');
-const PAGES = 'http://satyamraj.in/JioMart-Deals/';
+const PAGES = 'https://satyamraj.in/JioMart-Deals/';
 // Some stores block fetching code from other sites; there the "mobile" copy is the full bookmarklet.
 const LOADER_OK = true;
 const src = path.join(__dirname, 'src/deals.js');

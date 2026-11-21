@@ -2,7 +2,7 @@
 
 Scans the JioMart categories you pick, sorted by discount, and shows the biggest deals. It runs in your own browser as a bookmarklet or userscript. Nothing is uploaded and there is no account.
 
-**Live page:** http://satyamraj.in/JioMart-Deals/
+**Live page:** https://satyamraj.in/JioMart-Deals/
 
 **Version:** 2.1.0 (8 November 2026) — see [CHANGELOG.md](CHANGELOG.md).
 
@@ -44,7 +44,7 @@ The v2 port fixed the fetch layer; v2.1 goes further than the baseline in ways t
 - **Stock check corrected.** A product counts as in stock when it is sellable *and*, when the API reports in-stock variants, at least one size is listed. When the API omits variant data, sellable alone decides — so older responses no longer hide everything.
 - **Clearer empty states.** If JioMart returns a login page instead of data, or rows the parser cannot read, the scan now says so in a toast instead of showing a silent empty grid.
 - **New Python Telegram bot (`bot-v2/`).** Fetcher + SQLite history + deal differ + Telegram notifier, runnable on your own machine or a free host. Sends only new deals, price drops, restocks and discount increases (7-day cooldown for unchanged deals). See [Bot setup](#bot-setup-telegram-alerts-around-the-clock) below.
-- **Install video:** [watch the walkthrough (MP4)](http://satyamraj.in/PriceDrop-Hunter/media/install-demo.mp4) · [GIF](http://satyamraj.in/PriceDrop-Hunter/media/install-demo.gif)
+- **Install video:** [watch the walkthrough (MP4)](https://satyamraj.in/PriceDrop-Hunter/media/install-demo.mp4) · [GIF](https://satyamraj.in/PriceDrop-Hunter/media/install-demo.gif)
 - **Bookmark name fixed (2026-11-09):** the install button now reads **JioMart Deals** instead of the generic “PriceDrop Hunter”, so the bookmark you drag to your bookmarks bar is named after this store.
 
 ## Self-test (no network needed)
