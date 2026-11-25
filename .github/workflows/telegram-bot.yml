@@ -51,9 +51,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  scan:
-    # Scheduled runs start only after you set the repository variable BOT_ENABLED to true.
+  secrets:
+    # Skip the run with a warning, instead of failing it, until the secrets
+    # this bot needs are set (Settings -> Secrets and variables -> Actions).
     if: github.event_name == 'workflow_dispatch' || vars.BOT_ENABLED == 'true'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - name: Check required secrets
+        id: check
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          missing=""
+          if [ "$DRY_RUN" != "true" ]; then
+            for k in TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do [ -n "${!k}" ] || missing="$missing $k"; done
+          fi
+          if [ -n "$missing" ]; then
+            echo "::warning title=Skipped - secrets not set::Add these repository secrets to enable this workflow:$missing (see README)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  scan:
+    needs: secrets
+    if: needs.secrets.outputs.ok == 'true'
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
